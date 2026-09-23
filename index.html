@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#5B5BD6">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="陪伴·计划">
+<meta name="description" content="在碎片时间里推进多目标，并在提前完成后告诉你多出的时间该干嘛。">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='24' fill='%235B5BD6'/%3E%3Cpath d='M28 52 L44 68 L74 34' stroke='white' stroke-width='9' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="styles.css">
+<title>陪伴 · 计划</title>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="top">
+    <div class="brand-row">
+      <div class="brand"><span class="mark">✓</span>陪伴<em>·</em>计划</div>
+      <div class="datebox">
+        <input type="date" id="datePicker">
+      </div>
+    </div>
+  </header>
+
+  <div class="overview">
+    <div class="row1">
+      <h2 id="ovTitle">今日</h2>
+      <div class="free">可支配 <b id="ovFree">0h</b> · 已完成 <span id="ovDone">0/0</span></div>
+    </div>
+    <div class="meter"><i id="ovMeter" style="width:0%"></i></div>
+  </div>
+
+  <div class="tabs">
+    <button id="tabToday" class="on">今日计划</button>
+    <button id="tabBacklog">事项池</button>
+    <button id="tabSchedule">作息</button>
+  </div>
+
+  <!-- 今日视图 -->
+  <section class="view on" id="viewToday">
+    <div class="card">
+      <h3>今日空闲时间段
+        <span class="hdr-actions">
+          <button class="link" id="genFrag">从作息生成</button>
+          <button class="link" id="addFrag">＋ 添加</button>
+        </span>
+      </h3>
+      <div id="fragList"></div>
+    </div>
+
+    <div class="card">
+      <h3>今日计划 <button class="link" id="addTask">＋ 安排任务</button></h3>
+      <div id="taskList"></div>
+    </div>
+
+    <div class="card">
+      <h3>空余时间建议 <span class="hint">提前完成 / 多出的时间怎么用</span></h3>
+      <div class="suggest-ctrl">
+        <span style="font-size:13px;color:var(--sub)">精力</span>
+        <div class="seg" id="segEnergy">
+          <button data-v="低">低</button><button data-v="中">中</button><button data-v="高" class="on">高</button>
+        </div>
+        <span style="font-size:13px;color:var(--sub)">环境</span>
+        <div class="seg" id="segScene">
+          <button data-v="室内">室内</button><button data-v="可外出" class="on">可外出</button>
+        </div>
+      </div>
+      <div class="extra-min" style="margin-top:10px">
+        额外多出 <input type="number" id="extraMin" value="0" min="0"> 分钟
+      </div>
+      <button class="btn-primary" id="btnSuggest">给我一点建议</button>
+      <div id="suggList"></div>
+    </div>
+  </section>
+
+  <!-- 事项池视图 -->
+  <section class="view" id="viewBacklog">
+    <div class="card">
+      <h3>自我提升事项池 <button class="link" id="addBacklog">＋ 添加</button></h3>
+      <p class="hint" style="font-size:12px;color:var(--sub);margin-bottom:6px">这些是你"想做的事"，空余时间建议从这里挑。⭐=刚需主线，优先级越高越优先。</p>
+      <div id="backlogList"></div>
+    </div>
+  </section>
+
+  <!-- 作息视图 -->
+  <section class="view" id="viewSchedule">
+    <div class="card">
+      <h3>固定占用 <span class="hint">上课 / 吃饭 / 睡觉等</span></h3>
+      <p style="font-size:12.5px;color:var(--sub);margin-bottom:10px">填好每天固定的"没空时间"，应用会自动反推出你的空闲碎片时间（"今日"里点"从作息生成"）。</p>
+      <div id="occList"></div>
+      <button class="btn-ghost" id="addOcc">＋ 添加占用</button>
+      <button class="btn-primary" id="fillMySchedule">一键填入我的作息</button>
+    </div>
+  </section>
+
+</div>
+
+<!-- 弹窗：添加时间段 -->
+<div class="modal-mask" id="mFrag">
+  <div class="modal">
+    <h3>添加空闲时间段</h3>
+    <div class="row2">
+      <div class="field"><label>开始</label><input type="time" id="fStart" value="09:00"></div>
+      <div class="field"><label>结束</label><input type="time" id="fEnd" value="10:00"></div>
+    </div>
+    <div class="actions"><button id="mFragCancel">取消</button><button class="primary" id="mFragOk">保存</button></div>
+  </div>
+</div>
+
+<!-- 弹窗：添加任务 -->
+<div class="modal-mask" id="mTask">
+  <div class="modal">
+    <h3>安排一个任务</h3>
+    <div class="field"><label>来源（事项池，可选）</label><select id="tBacklog"><option value="">— 自定义任务 —</option></select></div>
+    <div class="field"><label>任务名</label><input type="text" id="tName" placeholder="例如：英语 · 背单词"></div>
+    <div class="field"><label>预计时长（分钟）</label><input type="number" id="tMin" value="60" min="5" step="5"></div>
+    <div class="actions"><button id="mTaskCancel">取消</button><button class="primary" id="mTaskOk">保存</button></div>
+  </div>
+</div>
+
+<!-- 弹窗：添加事项 -->
+<div class="modal-mask" id="mBacklog">
+  <div class="modal">
+    <h3>添加事项</h3>
+    <div class="field"><label>名称</label><input type="text" id="bName" placeholder="例如：练字"></div>
+    <div class="field"><label>说明</label><input type="text" id="bDesc" placeholder="一句话说明"></div>
+    <div class="field"><label>最短时长（分钟）</label><input type="number" id="bMin" value="20" min="5" step="5"></div>
+    <div class="row2">
+      <div class="field"><label>精力</label>
+        <select id="bEnergy"><option>低</option><option>中</option><option selected>高</option></select>
+      </div>
+      <div class="field"><label>场景</label>
+        <select id="bScene"><option>室内</option><option>室外</option><option selected>不限</option></select>
+      </div>
+    </div>
+    <div class="field"><label>优先级来源</label>
+      <select id="bType"><option value="deadline">截止日期</option><option value="habit" selected>习惯频率</option></select>
+    </div>
+    <div class="field"><label>截止日期（截止型）</label><input type="date" id="bDeadline"></div>
+    <div class="actions"><button id="mBacklogCancel">取消</button><button class="primary" id="mBacklogOk">保存</button></div>
+  </div>
+</div>
+
+<!-- 弹窗：添加占用 -->
+<div class="modal-mask" id="mOcc">
+  <div class="modal">
+    <h3>添加固定占用</h3>
+    <div class="field"><label>名称</label><input type="text" id="oLabel" placeholder="例如：上课 / 午饭"></div>
+    <div class="row2">
+      <div class="field"><label>开始</label><input type="time" id="oStart" value="08:30"></div>
+      <div class="field"><label>结束</label><input type="time" id="oEnd" value="11:40"></div>
+    </div>
+    <div class="field"><label>每周哪几天</label>
+      <div class="days-pick" id="oDays">
+        <label><input type="checkbox" value="1" checked><span>一</span></label>
+        <label><input type="checkbox" value="2" checked><span>二</span></label>
+        <label><input type="checkbox" value="3" checked><span>三</span></label>
+        <label><input type="checkbox" value="4" checked><span>四</span></label>
+        <label><input type="checkbox" value="5" checked><span>五</span></label>
+        <label><input type="checkbox" value="6"><span>六</span></label>
+        <label><input type="checkbox" value="7"><span>日</span></label>
+      </div>
+    </div>
+    <div class="actions"><button id="mOccCancel">取消</button><button class="primary" id="mOccOk">保存</button></div>
+  </div>
+</div>
+
+<div id="toast" class="toast"></div>
+
+<script src="app.js"></script>
+</body>
+</html>
