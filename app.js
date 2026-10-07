@@ -7,15 +7,18 @@
 
 const STORE_KEY = "companion-plan-v2";
 const MS_DAY = 86400000;
-const TODAY = "2026-09-23";
+function todayStr(){
+  const d = new Date(); // 本地时区的"现在"
+  return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate());
+}
 const DAY_START = "06:25";   // 可支配日窗口（起床后）
 const DAY_END = "22:00";     // 熄灯
 const MIN_FRAG = 10;         // 小于 10 分钟的碎片忽略
 const DAY_NAMES = ["一","二","三","四","五","六","日"];
 
 function pad(n){ return String(n).padStart(2, "0"); }
-function daysUntil(deadline){ return Math.round((new Date(deadline+"T00:00:00") - new Date(TODAY+"T00:00:00")) / MS_DAY); }
-function daysSince(lastDone){ return Math.round((new Date(TODAY+"T00:00:00") - new Date(lastDone+"T00:00:00")) / MS_DAY); }
+function daysUntil(deadline){ return Math.round((new Date(deadline+"T00:00:00") - new Date(todayStr()+"T00:00:00")) / MS_DAY); }
+function daysSince(lastDone){ return Math.round((new Date(todayStr()+"T00:00:00") - new Date(lastDone+"T00:00:00")) / MS_DAY); }
 function weekdayOf(dateStr){ const d = new Date(dateStr+"T00:00:00").getDay(); return d === 0 ? 7 : d; } // 1=周一…7=周日
 function fragMin(f){ const [sh,sm]=f.start.split(":").map(Number), [eh,em]=f.end.split(":").map(Number); return (eh*60+em)-(sh*60+sm); }
 function fmtDur(min){ const h=Math.floor(min/60), m=min%60; return h>0 ? (m>0? h+"h"+m+"m" : h+"h") : m+"m"; }
@@ -26,6 +29,16 @@ function daysLabel(days){
   if(eq(days, all)) return "每天";
   if(eq(days, wd)) return "工作日";
   return days.map(d=>"周"+DAY_NAMES[d-1]).join("、");
+}
+function addMin(timeStr, m){
+  const [h,mm] = timeStr.split(":").map(Number);
+  const total = h*60 + mm + m;
+  return pad(Math.floor(total/60)%24) + ":" + pad(total%60);
+}
+function addDaysStr(dateStr, n){
+  const d = new Date(dateStr+"T00:00:00");
+  d.setDate(d.getDate()+n);
+  return d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate());
 }
 
 /* ---------- 从固定占用反推空闲碎片 ---------- */
@@ -42,33 +55,11 @@ function genFromSchedule(schedule, dateStr){
   return frags.filter(f => fragMin(f) >= MIN_FRAG);
 }
 
-/* ---------- 种子数据：你的真实处境 ---------- */
+/* ---------- 种子数据：空模板（默认不预置任何内容） ---------- */
 function seedState(){
-  const schedule = [
-    { days:[1,2,3,4,5], start:"07:10", end:"11:40", label:"早餐·上午课" },
-    { days:[1,2,3,4,5], start:"11:40", end:"12:15", label:"午饭" },
-    { days:[1,2,3,4,5], start:"13:20", end:"16:55", label:"小憩·下午课" },
-    { days:[1,2,3,4,5], start:"17:00", end:"18:40", label:"晚饭·休息" },
-    { days:[1,2,3,4,5], start:"21:30", end:"22:00", label:"洗漱·就寝" },
-  ];
-  // 数组顺序即优先级：越靠前越优先（英语刚需排最前，法学最后）；拖动可重排
-  const backlog = [
-    { id:"en",  name:"英语",          desc:"专升本英语·应试刚需", cat:"英语", min:20, energy:"低", scene:"不限", must:true, type:"habit", interval:1, lastDone:"2026-09-22", hint:"每天雷打不动，不可断" },
-    { id:"ctf", name:"CTF Web",       desc:"竞赛 + 兴趣", cat:"安全", min:60, energy:"高", scene:"室内", type:"habit", interval:2, lastDone:"2026-09-22" },
-    { id:"web", name:"Web全栈+AI编程", desc:"核心技能 · 黑客松MVP", cat:"编程", min:60, energy:"高", scene:"室内", type:"deadline", deadline:"2026-10-07", unit:"黑客松(10.7)", left:9 },
-    { id:"fit", name:"低冲击健身",    desc:"慢跑/快走 · 护膝三件套", cat:"健康", min:30, energy:"中", scene:"室外", type:"habit", interval:2, lastDone:"2026-09-21", hint:"左膝旧伤，别剧烈" },
-    { id:"law", name:"法学",          desc:"超长期备选", cat:"备选", min:30, energy:"中", scene:"不限", type:"habit", interval:7, lastDone:"2026-09-15", hint:"每周一次即可" },
-  ];
-  const days = {
-    "2026-09-23": {
-      fragments: genFromSchedule(schedule, "2026-09-23"),
-      tasks: [
-        { id:"t1", backlogId:"en",  title:"英语 · 背单词（晨间块）", min:20, done:false },
-        { id:"t2", backlogId:"web", title:"Web/AI编程 · 推黑客松 MVP", min:60, done:false },
-      ]
-    },
-    "2026-09-24": { fragments: genFromSchedule(schedule, "2026-09-24"), tasks: [] },
-  };
+  const schedule = [];
+  const backlog = [];
+  const days = {};
   return { schedule, backlog, days };
 }
 
@@ -81,9 +72,10 @@ function load(){
 function save(){ localStorage.setItem(STORE_KEY, JSON.stringify(state)); }
 function dayData(){ if(!state.days[state.date]) state.days[state.date] = {fragments:[], tasks:[]}; return state.days[state.date]; }
 
-state.date = state.date || TODAY;
+state.date = todayStr(); // 每次打开都回到今天，不管上次停在哪
 let view = "today";
 let energy = "高", scene = "可外出";
+let lastSugg = null; // 最近一次建议结果，render 后仍保留
 
 function $(id){ return document.getElementById(id); }
 function esc(s){ return String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
@@ -95,10 +87,12 @@ function render(){
   $("tabToday").classList.toggle("on", view==="today");
   $("tabBacklog").classList.toggle("on", view==="backlog");
   $("tabSchedule").classList.toggle("on", view==="schedule");
+  $("tabWeek").classList.toggle("on", view==="week");
   $("viewToday").classList.toggle("on", view==="today");
   $("viewBacklog").classList.toggle("on", view==="backlog");
   $("viewSchedule").classList.toggle("on", view==="schedule");
-  renderOverview(); renderFrags(); renderTasks(); renderBacklog(); renderSchedule(); renderSuggList();
+  $("viewWeek").classList.toggle("on", view==="week");
+  renderOverview(); renderFrags(); renderTasks(); renderBacklog(); renderSchedule(); renderSuggList(); renderWeek();
 }
 
 function renderOverview(){
@@ -107,7 +101,7 @@ function renderOverview(){
   const plannedMin = d.tasks.reduce((s,t)=>s+t.min,0);
   const doneCount = d.tasks.filter(t=>t.done).length;
   const freeMin = Math.max(0, totalMin - plannedMin);
-  $("ovTitle").textContent = state.date === TODAY ? "今天" : state.date;
+  $("ovTitle").textContent = state.date === todayStr() ? "今天" : state.date;
   $("ovFree").textContent = fmtDur(freeMin);
   $("ovDone").textContent = doneCount + "/" + d.tasks.length;
   $("ovMeter").style.width = (totalMin ? Math.min(100, plannedMin/totalMin*100) : 0) + "%";
@@ -117,12 +111,25 @@ function renderFrags(){
   const d = dayData();
   const el = $("fragList");
   if(!d.fragments.length){ el.innerHTML = '<div class="empty">还没有空闲时间段。点"从作息生成"，或手动"＋ 添加"。</div>'; return; }
-  el.innerHTML = d.fragments.map((f,i)=>`
-    <div class="frag">
-      <span class="time">${f.start}–${f.end}</span>
-      <span class="dur">${fmtDur(fragMin(f))}</span>
-      <span class="del" data-del-frag="${i}">✕</span>
-    </div>`).join("");
+  el.innerHTML = d.fragments.map((f,i)=>{
+    const inner = d.tasks
+      .filter(t => t.start && t.end && t.start >= f.start && t.end <= f.end)
+      .sort((a,b)=> a.start.localeCompare(b.start));
+    const tasksHtml = inner.map(t=>`
+      <div class="frag-task">
+        <span class="ft-time">${t.start}–${t.end}</span>
+        <span class="ft-name">${esc(t.title)}</span>
+      </div>`).join("");
+    return `
+      <div class="frag-group">
+        <div class="frag">
+          <span class="time">${f.start}–${f.end}</span>
+          <span class="dur">${fmtDur(fragMin(f))}</span>
+          <span class="del" data-del-frag="${i}">✕</span>
+        </div>
+        ${tasksHtml}
+      </div>`;
+  }).join("");
 }
 
 function renderTasks(){
@@ -134,7 +141,7 @@ function renderTasks(){
       <div class="cb" data-check="${i}">${t.done?'✓':''}</div>
       <div class="t-body">
         <div class="t-title">${esc(t.title)}</div>
-        <div class="t-meta">${fmtDur(t.min)}</div>
+        <div class="t-meta">${fmtDur(t.min)}${(t.start&&t.end)?`<span class="t-time">${t.start}–${t.end}</span>`:""}</div>
       </div>
       <span class="t-del" data-del-task="${i}">✕</span>
     </div>`).join("");
@@ -145,7 +152,7 @@ function renderBacklog(){
   if(!state.backlog.length){ el.innerHTML = '<div class="empty">事项池为空，点"＋ 添加"。</div>'; return; }
   el.innerHTML = state.backlog.map((b,i)=>{
     let meta = "";
-    if(b.type==="deadline"){ const dd=daysUntil(b.deadline); meta = `截止 ${b.deadline} · 剩 ${dd} 天`; if(b.left) meta += ` · 剩 ${b.left} 节`; }
+    if(b.type==="deadline"){ const dd=daysUntil(b.deadline); meta = `截止 ${b.deadline} · 剩 ${dd} 天`; }
     else { meta = `习惯 · ${daysSince(b.lastDone)} 天没做`; }
     const must = !!b.must;
     return `<div class="blk" draggable="true" data-idx="${i}">
@@ -169,7 +176,7 @@ function renderBacklog(){
 
 function renderSchedule(){
   const el = $("occList");
-  if(!state.schedule.length){ el.innerHTML = '<div class="empty">还没有固定占用。点下方"一键填入我的作息"或"＋ 添加占用"。</div>'; return; }
+  if(!state.schedule.length){ el.innerHTML = '<div class="empty">还没有固定占用。点下方"＋ 添加占用"。</div>'; return; }
   el.innerHTML = state.schedule.map((o,i)=>`
     <div class="occ">
       <span class="o-days">${daysLabel(o.days)}</span>
@@ -182,7 +189,29 @@ function renderSchedule(){
 }
 
 function renderSuggList(){
-  $("suggList").innerHTML = "";
+  const el = $("suggList");
+  if(!lastSugg){ el.innerHTML = ""; return; }
+  if(lastSugg.empty){ el.innerHTML = '<div class="empty" style="padding-top:14px">暂时没有合适的事项——去事项池添加，或把时间调长一点试试。</div>'; return; }
+  if(!lastSugg.singles.length && !lastSugg.combos.length){ el.innerHTML = ""; return; }
+  let html = `<div style="font-size:12px;color:var(--sub);margin-top:12px">当前可支配 <b style="color:var(--brand)">${fmtDur(lastSugg.remaining)}</b>，建议：</div>`;
+  html += lastSugg.singles.map((c,i)=>`
+    <div class="sugg-card">
+      <div class="rank">建议 ${i+1}</div>
+      <div class="s-name">${esc(c.item.name)}<span class="s-fit">${c.fit}</span></div>
+      <div class="s-reason">${esc(c.reason)} · 用 ${fmtDur(c.item.min)} 左右</div>
+      <button class="sched-btn" data-sugg-single="${i}">排进空闲时间</button>
+    </div>`).join("");
+  if(lastSugg.combos.length){
+    html += `<div class="combo-hd">组合建议 · 一次做两件</div>`;
+    html += lastSugg.combos.map((c,i)=>`
+      <div class="sugg-card combo">
+        <div class="rank">组合 ${i+1}</div>
+        <div class="s-name">${c.items.map(x=>esc(x.name)).join(" + ")}<span class="s-fit">${fmtDur(c.totalMin)}</span></div>
+        <div class="s-reason">${esc(c.reason)} · 正好用满 ${fmtDur(c.totalMin)}</div>
+        <button class="sched-btn" data-sugg-combo="${i}">一起排进</button>
+      </div>`).join("");
+  }
+  el.innerHTML = html;
 }
 
 /* ---------- 建议引擎 ---------- */
@@ -202,42 +231,154 @@ function suggest(){
       let dyn = 0, reason = "";
       if(b.type === "deadline" && b.deadline){
         const dd = daysUntil(b.deadline);
-        dyn += Math.max(0, 21 - dd) * 0.5;
-        reason = `距 ${b.unit||"截止"} 还有 ${dd} 天` + (b.left ? `，剩 ${b.left} 节` : "");
+        dyn = Math.max(0, 14 - dd) * 15; // 越接近截止越急，≤0 天最高 210
+        reason = `距 ${b.unit||"截止"} 还有 ${dd} 天`;
       } else if(b.type === "habit"){
         const gap = daysSince(b.lastDone);
-        dyn += gap * 1.0;
-        reason = `「${b.name}」已经 ${gap} 天没做了`;
+        const due = b.interval || 1;
+        if(gap >= due){
+          dyn = (gap - due + 1) * 10; // 到期后每多欠一天 +10
+          reason = `「${b.name}」已经 ${gap} 天没做了`;
+        } else {
+          dyn = -1000; // 还没到点 / 今天做过了：压到末尾
+          reason = `「${b.name}」最近做过了`;
+        }
       }
       if(b.hint) reason = reason ? reason + " · " + b.hint : b.hint;
       else if(!reason && b.must) reason = "你的刚需主线，每天雷打不动";
       const over = remaining - b.min;
       const fit = over <= 15 ? 1.5 : (over <= 45 ? 0.8 : 0.2);
       const pri = state.backlog.length - state.backlog.indexOf(b); // 位置越靠前优先级越高
-      const score = pri * 1000 + dyn * 10 + fit;
+      const score = pri * 100 + dyn + fit; // pri 降权，紧迫度才能生效
       const fitTag = over <= 15 ? "刚刚好" : (over <= 45 ? "合适" : "时间有余");
       return { item:b, score, reason, fit:fitTag };
     })
-    .sort((a,b)=> b.score - a.score)
-    .slice(0,3);
+    .sort((a,b)=> b.score - a.score);
 
-  const el = $("suggList");
-  if(!cands.length){
-    el.innerHTML = '<div class="empty" style="padding-top:14px">暂时没有合适的事项——去事项池添加，或把时间调长一点试试。</div>';
-    return;
+  const singles = cands.slice(0,3);
+
+  // 组合建议：从排名靠前的候选里两两配对，总时长能塞进 remaining 就成组
+  const combos = [];
+  const pool = cands.slice(0,6);
+  for(let i=0;i<pool.length;i++){
+    for(let j=i+1;j<pool.length;j++){
+      const a = pool[i], b = pool[j];
+      const total = a.item.min + b.item.min;
+      if(total > remaining) continue;
+      combos.push({ items:[a.item, b.item], totalMin: total, score: a.score + b.score, reason: a.reason });
+    }
   }
-  el.innerHTML = `<div style="font-size:12px;color:var(--sub);margin-top:12px">当前可支配 <b style="color:var(--brand)">${fmtDur(remaining)}</b>，建议：</div>` +
-    cands.map((c,i)=>`
-      <div class="sugg-card">
-        <div class="rank">建议 ${i+1}</div>
-        <div class="s-name">${esc(c.item.name)}<span class="s-fit">${c.fit}</span></div>
-        <div class="s-reason">${esc(c.reason)} · 用 ${fmtDur(c.item.min)} 左右</div>
-      </div>`).join("");
+  combos.sort((a,b)=> b.score - a.score);
+  const topCombos = combos.slice(0,2);
+
+  lastSugg = { remaining, singles, combos: topCombos, empty: cands.length === 0 };
+  renderSuggList();
 }
 
 function energyAllow(user, need){
   const rank = {低:1, 中:2, 高:3};
   return rank[need] <= rank[user];
+}
+
+/* ---------- 排程：把建议落进具体时间块 ---------- */
+function freeSlots(){
+  const d = dayData();
+  const slots = [];
+  for(const f of d.fragments){
+    const inner = d.tasks
+      .filter(t => t.start && t.end && t.start >= f.start && t.end <= f.end)
+      .sort((a,b)=> a.start.localeCompare(b.start));
+    let cursor = f.start;
+    for(const t of inner){
+      if(t.start > cursor) slots.push({start:cursor, end:t.start});
+      if(t.end > cursor) cursor = t.end;
+    }
+    if(f.end > cursor) slots.push({start:cursor, end:f.end});
+  }
+  return slots.filter(s => fragMin(s) >= MIN_FRAG);
+}
+function scheduleItems(list){
+  const d = dayData();
+  const placed = [], failed = [];
+  for(const {item, min} of list){
+    const slot = freeSlots().find(s => fragMin(s) >= min);
+    if(!slot){ failed.push(item.name); continue; }
+    const start = slot.start, end = addMin(start, min);
+    d.tasks.push({ id:uid(), backlogId:item.id, title:item.name, min, start, end, done:false });
+    placed.push(`${item.name} ${start}–${end}`);
+  }
+  lastSugg = null; // 排完清掉，重新点"给我一点建议"拿最新空闲
+  save(); render();
+  if(placed.length) toast("已排进：" + placed.join("、"));
+  if(failed.length) toast("没排下：" + failed.join("、") + "（空闲时间不够）");
+}
+
+/* ---------- 周视图 ---------- */
+function weekDates(){
+  const wd = new Date(todayStr()+"T00:00:00").getDay(); // 0=周日
+  const mondayOffset = wd === 0 ? -6 : 1 - wd;
+  const out = [];
+  for(let i=0;i<7;i++) out.push(addDaysStr(todayStr(), mondayOffset + i));
+  return out;
+}
+function weekStats(){
+  const dates = weekDates();
+  let done=0, total=0;
+  const byCat = {};
+  for(const ds of dates){
+    const d = state.days[ds];
+    if(!d) continue;
+    for(const t of d.tasks){
+      total++;
+      if(t.done){
+        done++;
+        const b = state.backlog.find(x=>x.id===t.backlogId);
+        const cat = b ? (b.cat||"其他") : "其他";
+        byCat[cat] = (byCat[cat]||0) + (t.min||0);
+      }
+    }
+  }
+  return {done, total, byCat};
+}
+function renderWeek(){
+  const st = weekStats();
+  const cats = Object.entries(st.byCat).sort((a,b)=>b[1]-a[1]);
+  const rate = st.total ? Math.round(st.done/st.total*100) : 0;
+  $("weekStats").innerHTML = `
+    <div class="stat-row">
+      <div class="stat"><div class="stat-n">${st.done}/${st.total}</div><div class="stat-l">本周完成打卡</div></div>
+      <div class="stat"><div class="stat-n">${rate}%</div><div class="stat-l">完成率</div></div>
+      <div class="stat"><div class="stat-n">${cats.length ? fmtDur(cats[0][1]) : "0m"}</div><div class="stat-l">最多投入·${cats.length ? esc(cats[0][0]) : "—"}</div></div>
+    </div>
+    ${cats.length ? `<div class="stat-cats">${cats.map(([k,v])=>`<span class="scat"><b>${esc(k)}</b> ${fmtDur(v)}</span>`).join("")}</div>` : ""}`;
+
+  const today = todayStr();
+  let html = "";
+  for(let i=0;i<7;i++){
+    const ds = addDaysStr(today, i);
+    const wd = "周" + DAY_NAMES[weekdayOf(ds)-1];
+    const isToday = i===0;
+    const items = [];
+    for(const b of state.backlog){
+      if(b.type==="deadline" && b.deadline && b.deadline === ds){
+        items.push(`<span class="wk-deadline">${esc(b.name)} 截止</span>`);
+      } else if(b.type==="habit"){
+        const gap = daysSince(b.lastDone);
+        const interval = b.interval || 1;
+        const dueOffset = gap >= interval ? 0 : interval - gap; // 已逾期就归到今天，否则算还差几天
+        if(dueOffset === i){
+          items.push(`<span class="wk-habit">${esc(b.name)} ${gap >= interval ? "逾期" + gap + "天" : "该做了"}</span>`);
+        }
+      }
+    }
+    const label = isToday ? "今天" : (i===1 ? "明天" : ds.slice(5));
+    html += `
+      <div class="wk-day ${isToday?'today':''}">
+        <div class="wk-hd"><div class="wk-date">${label}</div><div class="wk-wd">${wd}</div></div>
+        <div class="wk-body">${items.length ? items.join("") : '<span class="wk-none">—</span>'}</div>
+      </div>`;
+  }
+  $("weekList").innerHTML = html;
 }
 
 /* ---------- 事件 ---------- */
@@ -248,10 +389,11 @@ $("datePicker").addEventListener("change", e => { state.date = e.target.value; s
 $("tabToday").addEventListener("click", ()=>{ view="today"; render(); });
 $("tabBacklog").addEventListener("click", ()=>{ view="backlog"; render(); });
 $("tabSchedule").addEventListener("click", ()=>{ view="schedule"; render(); });
+$("tabWeek").addEventListener("click", ()=>{ view="week"; render(); });
 
 /* 从作息生成今日空闲 */
 $("genFrag").addEventListener("click", ()=>{
-  if(!state.schedule.length){ alert("先到「作息」页填入固定占用（或点「一键填入我的作息」）。"); return; }
+  if(!state.schedule.length){ alert("先到「作息」页添加固定占用。"); return; }
   const has = dayData().fragments.length > 0;
   if(has && !confirm("用固定作息覆盖当前的空闲时间段？")) return;
   dayData().fragments = genFromSchedule(state.schedule, state.date);
@@ -282,6 +424,11 @@ $("mTaskOk").addEventListener("click", ()=>{
 
 $("addBacklog").addEventListener("click", ()=> openModal("mBacklog"));
 $("mBacklogCancel").addEventListener("click", ()=> closeModal("mBacklog"));
+$("bType").addEventListener("change", e=>{
+  const isDeadline = e.target.value === "deadline";
+  $("bDeadlineWrap").style.display = isDeadline ? "" : "none";
+  $("bIntervalWrap").style.display = isDeadline ? "none" : "";
+});
 $("mBacklogOk").addEventListener("click", ()=>{
   const name = $("bName").value.trim();
   if(name){
@@ -290,7 +437,7 @@ $("mBacklogOk").addEventListener("click", ()=>{
       min: parseInt($("bMin").value,10)||20,
       energy: $("bEnergy").value, scene: $("bScene").value,
       type: $("bType").value, deadline: $("bType").value==="deadline" ? ($("bDeadline").value || null) : null,
-      interval: 2, lastDone: TODAY,
+      interval: parseInt($("bInterval").value,10) || 2, lastDone: todayStr(),
     });
     save(); render();
   }
@@ -306,19 +453,20 @@ $("mOccOk").addEventListener("click", ()=>{
   if(start && end && end > start && days.length){ state.schedule.push({days, start, end, label}); save(); render(); }
   closeModal("mOcc");
 });
-$("fillMySchedule").addEventListener("click", ()=>{
-  state.schedule = [
-    { days:[1,2,3,4,5], start:"07:10", end:"11:40", label:"早餐·上午课" },
-    { days:[1,2,3,4,5], start:"11:40", end:"12:15", label:"午饭" },
-    { days:[1,2,3,4,5], start:"13:20", end:"16:55", label:"小憩·下午课" },
-    { days:[1,2,3,4,5], start:"17:00", end:"18:40", label:"晚饭·休息" },
-    { days:[1,2,3,4,5], start:"21:30", end:"22:00", label:"洗漱·就寝" },
-  ];
-  save(); render(); toast("已填入你的作息 ✓");
-});
-
 /* 点击委托：删除 / 打卡 */
 document.addEventListener("click", e=>{
+  const ss = e.target.closest("[data-sugg-single]");
+  if(ss && lastSugg){
+    const c = lastSugg.singles[+ss.dataset.suggSingle];
+    if(c) scheduleItems([{item:c.item, min:c.item.min}]);
+    return;
+  }
+  const sc = e.target.closest("[data-sugg-combo]");
+  if(sc && lastSugg){
+    const c = lastSugg.combos[+sc.dataset.suggCombo];
+    if(c) scheduleItems(c.items.map(x=>({item:x, min:x.min})));
+    return;
+  }
   const df = e.target.closest("[data-del-frag]");
   if(df){ dayData().fragments.splice(+df.dataset.delFrag,1); save(); render(); return; }
   const dt = e.target.closest("[data-del-task]");
@@ -328,7 +476,15 @@ document.addEventListener("click", e=>{
   const dO = e.target.closest("[data-del-occ]");
   if(dO){ state.schedule.splice(+dO.dataset.delOcc,1); save(); render(); return; }
   const ck = e.target.closest("[data-check]");
-  if(ck){ const t=dayData().tasks[+ck.dataset.check]; t.done=!t.done; save(); render(); return; }
+  if(ck){
+    const t = dayData().tasks[+ck.dataset.check];
+    t.done = !t.done;
+    if(t.done && t.backlogId){
+      const b = state.backlog.find(x => x.id === t.backlogId);
+      if(b) b.lastDone = todayStr();
+    }
+    save(); render(); return;
+  }
 });
 
 $("segEnergy").addEventListener("click", e=>{
@@ -389,3 +545,23 @@ function cleanupDrag(){
 }
 
 render();
+
+/* ---------- PWA：主屏图标 / 离线缓存 / 打开时提醒 ---------- */
+if("serviceWorker" in navigator){
+  window.addEventListener("load", ()=>{
+    navigator.serviceWorker.register("./sw.js").catch(()=>{});
+  });
+}
+function maybeRemind(){
+  if(!("Notification" in window) || Notification.permission !== "granted") return;
+  const en = state.backlog.find(b=>b.must);
+  if(!en || en.type !== "habit") return;
+  if(daysSince(en.lastDone) < (en.interval || 1)) return;
+  const d = state.days[todayStr()];
+  const todayDone = d && d.tasks.some(t=>t.backlogId===en.id && t.done);
+  if(!todayDone) new Notification("陪伴·计划", { body:`${en.name} 还没打卡——今天记得做哦。` });
+}
+if("Notification" in window && Notification.permission === "default"){
+  window.addEventListener("load", ()=>{ Notification.requestPermission(); });
+}
+window.addEventListener("load", ()=>{ setTimeout(maybeRemind, 800); });

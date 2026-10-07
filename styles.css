@@ -105,8 +105,9 @@ header.top {
 .link:hover { color: var(--brand-strong); }
 .hdr-actions { display: flex; gap: 12px; }
 
-.frag { display: flex; align-items: center; gap: 8px; padding: 9px 0; border-bottom: 1px solid var(--line); }
-.frag:last-child { border-bottom: none; }
+.frag-group { border-bottom: 1px solid var(--line); }
+.frag-group:last-child { border-bottom: none; }
+.frag { display: flex; align-items: center; gap: 8px; padding: 9px 0; }
 .frag .time { font-weight: 700; font-variant-numeric: tabular-nums; }
 .frag .dur { color: var(--sub); font-size: 12px; }
 .frag .del { margin-left: auto; color: var(--del); cursor: pointer; font-size: 16px; line-height: 1; }
@@ -204,3 +205,40 @@ header.top {
   pointer-events: none; z-index: 120; max-width: 82vw; text-align: center;
 }
 .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+/* 排程按钮 */
+.sched-btn {
+  margin-top: 10px; font: inherit; font-size: 13px; font-weight: 600; color: var(--brand);
+  background: var(--brand-soft); border: none; border-radius: 9px; padding: 7px 12px; cursor: pointer;
+}
+.sched-btn:hover { background: #DFDEF7; }
+.sched-btn:active { transform: translateY(1px); }
+.combo-hd { font-size: 12px; color: var(--sub); margin: 16px 0 0; font-weight: 600; }
+.sugg-card.combo { border-style: dashed; border-color: var(--brand); }
+
+/* 碎片里已排的任务 */
+.frag-task { display: flex; align-items: center; gap: 8px; font-size: 12.5px; padding: 3px 4px 9px; }
+.frag-task .ft-time { font-variant-numeric: tabular-nums; color: var(--brand); font-weight: 600; }
+.frag-task .ft-name { color: var(--ink); }
+
+/* 任务时间 chip */
+.t-time { display: inline-block; margin-left: 6px; font-size: 11px; color: var(--brand); background: var(--brand-soft); padding: 1px 6px; border-radius: 5px; font-variant-numeric: tabular-nums; }
+
+/* 周视图 */
+.stat-row { display: flex; gap: 10px; }
+.stat { flex: 1; background: var(--card-2); border: 1px solid var(--line); border-radius: 12px; padding: 12px 10px; text-align: center; }
+.stat-n { font-size: 20px; font-weight: 700; color: var(--brand); font-variant-numeric: tabular-nums; }
+.stat-l { font-size: 11px; color: var(--sub); margin-top: 3px; }
+.stat-cats { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.scat { font-size: 12px; color: var(--sub); background: var(--seg-bg); padding: 4px 9px; border-radius: 7px; }
+.scat b { color: var(--ink); }
+.wk-day { display: flex; align-items: flex-start; gap: 12px; padding: 11px 0; border-bottom: 1px solid var(--line); }
+.wk-day:last-child { border-bottom: none; }
+.wk-day.today { background: var(--brand-soft); border-radius: 10px; padding-left: 10px; padding-right: 10px; }
+.wk-hd { min-width: 56px; }
+.wk-date { font-weight: 700; font-size: 13.5px; }
+.wk-wd { font-size: 11px; color: var(--sub); }
+.wk-body { flex: 1; display: flex; flex-wrap: wrap; gap: 6px; }
+.wk-deadline { font-size: 12px; color: var(--danger); background: #FDEBEA; padding: 3px 8px; border-radius: 7px; }
+.wk-habit { font-size: 12px; color: var(--brand); background: var(--brand-soft); padding: 3px 8px; border-radius: 7px; }
+.wk-none { font-size: 12px; color: var(--sub); opacity: .6; }

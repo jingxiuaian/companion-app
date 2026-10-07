@@ -10,6 +10,7 @@
 <meta name="description" content="在碎片时间里推进多目标，并在提前完成后告诉你多出的时间该干嘛。">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='24' fill='%235B5BD6'/%3E%3Cpath d='M28 52 L44 68 L74 34' stroke='white' stroke-width='9' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="styles.css">
+<link rel="manifest" href="manifest.webmanifest">
 <title>陪伴 · 计划</title>
 </head>
 <body>
@@ -35,6 +36,7 @@
   <div class="tabs">
     <button id="tabToday" class="on">今日计划</button>
     <button id="tabBacklog">事项池</button>
+    <button id="tabWeek">周视图</button>
     <button id="tabSchedule">作息</button>
   </div>
 
@@ -84,6 +86,18 @@
     </div>
   </section>
 
+  <!-- 周视图 -->
+  <section class="view" id="viewWeek">
+    <div class="card">
+      <h3>本周统计</h3>
+      <div id="weekStats"></div>
+    </div>
+    <div class="card">
+      <h3>未来 7 天 <span class="hint">截止日 / 该做的习惯</span></h3>
+      <div id="weekList"></div>
+    </div>
+  </section>
+
   <!-- 作息视图 -->
   <section class="view" id="viewSchedule">
     <div class="card">
@@ -91,7 +105,6 @@
       <p style="font-size:12.5px;color:var(--sub);margin-bottom:10px">填好每天固定的"没空时间"，应用会自动反推出你的空闲碎片时间（"今日"里点"从作息生成"）。</p>
       <div id="occList"></div>
       <button class="btn-ghost" id="addOcc">＋ 添加占用</button>
-      <button class="btn-primary" id="fillMySchedule">一键填入我的作息</button>
     </div>
   </section>
 
@@ -114,7 +127,7 @@
   <div class="modal">
     <h3>安排一个任务</h3>
     <div class="field"><label>来源（事项池，可选）</label><select id="tBacklog"><option value="">— 自定义任务 —</option></select></div>
-    <div class="field"><label>任务名</label><input type="text" id="tName" placeholder="例如：英语 · 背单词"></div>
+    <div class="field"><label>任务名</label><input type="text" id="tName" placeholder="例如：读 30 页书"></div>
     <div class="field"><label>预计时长（分钟）</label><input type="number" id="tMin" value="60" min="5" step="5"></div>
     <div class="actions"><button id="mTaskCancel">取消</button><button class="primary" id="mTaskOk">保存</button></div>
   </div>
@@ -138,7 +151,8 @@
     <div class="field"><label>优先级来源</label>
       <select id="bType"><option value="deadline">截止日期</option><option value="habit" selected>习惯频率</option></select>
     </div>
-    <div class="field"><label>截止日期（截止型）</label><input type="date" id="bDeadline"></div>
+    <div class="field" id="bDeadlineWrap" style="display:none"><label>截止日期（截止型）</label><input type="date" id="bDeadline"></div>
+    <div class="field" id="bIntervalWrap"><label>习惯间隔（天）</label><input type="number" id="bInterval" value="2" min="1" step="1"></div>
     <div class="actions"><button id="mBacklogCancel">取消</button><button class="primary" id="mBacklogOk">保存</button></div>
   </div>
 </div>
