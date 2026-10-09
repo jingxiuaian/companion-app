@@ -38,6 +38,7 @@
     <button id="tabBacklog">事项池</button>
     <button id="tabWeek">周视图</button>
     <button id="tabSchedule">作息</button>
+    <button id="tabNotes">记事</button>
   </div>
 
   <!-- 今日视图 -->
@@ -105,6 +106,25 @@
       <p style="font-size:12.5px;color:var(--sub);margin-bottom:10px">填好每天固定的"没空时间"，应用会自动反推出你的空闲碎片时间（"今日"里点"从作息生成"）。</p>
       <div id="occList"></div>
       <button class="btn-ghost" id="addOcc">＋ 添加占用</button>
+    </div>
+  </section>
+
+  <!-- 记事本视图 -->
+  <section class="view" id="viewNotes">
+    <div class="card">
+      <h3>记事本 <span class="hint">随手记 · 清单能打勾划掉</span></h3>
+      <div class="note-type-row">
+        <span class="lbl">类型</span>
+        <div class="seg" id="segNoteType">
+          <button data-v="todo" class="on">清单</button>
+          <button data-v="note">文字</button>
+        </div>
+      </div>
+      <div class="note-input-row">
+        <textarea id="noteInput" rows="2" placeholder="记点什么，回车保存 · Ctrl+回车换行"></textarea>
+        <button id="btnAddNote">记下</button>
+      </div>
+      <div id="noteList"></div>
     </div>
   </section>
 

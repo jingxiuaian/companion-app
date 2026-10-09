@@ -60,13 +60,17 @@ function seedState(){
   const schedule = [];
   const backlog = [];
   const days = {};
-  return { schedule, backlog, days };
+  const notes = [];
+  return { schedule, backlog, days, notes };
 }
 
 /* ---------- 状态 ---------- */
 let state = load();
 function load(){
-  try { const s = localStorage.getItem(STORE_KEY); if(s) return JSON.parse(s); } catch(e){}
+  try {
+    const s = localStorage.getItem(STORE_KEY);
+    if(s) return Object.assign(seedState(), JSON.parse(s)); // 旧数据缺 notes 时自动补默认值
+  } catch(e){}
   return seedState();
 }
 function save(){ localStorage.setItem(STORE_KEY, JSON.stringify(state)); }
@@ -75,6 +79,7 @@ function dayData(){ if(!state.days[state.date]) state.days[state.date] = {fragme
 state.date = todayStr(); // 每次打开都回到今天，不管上次停在哪
 let view = "today";
 let energy = "高", scene = "可外出";
+let noteType = "todo"; // 记事本当前输入类型：todo=清单 / note=文字
 let lastSugg = null; // 最近一次建议结果，render 后仍保留
 
 function $(id){ return document.getElementById(id); }
@@ -88,11 +93,13 @@ function render(){
   $("tabBacklog").classList.toggle("on", view==="backlog");
   $("tabSchedule").classList.toggle("on", view==="schedule");
   $("tabWeek").classList.toggle("on", view==="week");
+  $("tabNotes").classList.toggle("on", view==="notes");
   $("viewToday").classList.toggle("on", view==="today");
   $("viewBacklog").classList.toggle("on", view==="backlog");
   $("viewSchedule").classList.toggle("on", view==="schedule");
   $("viewWeek").classList.toggle("on", view==="week");
-  renderOverview(); renderFrags(); renderTasks(); renderBacklog(); renderSchedule(); renderSuggList(); renderWeek();
+  $("viewNotes").classList.toggle("on", view==="notes");
+  renderOverview(); renderFrags(); renderTasks(); renderBacklog(); renderSchedule(); renderSuggList(); renderWeek(); renderNotes();
 }
 
 function renderOverview(){
@@ -381,6 +388,33 @@ function renderWeek(){
   $("weekList").innerHTML = html;
 }
 
+/* ---------- 记事本 ---------- */
+function fmtNoteTime(ts){
+  const d = new Date(ts), now = new Date();
+  const md = (d.getMonth()+1) + "-" + pad(d.getDate());
+  const hm = pad(d.getHours()) + ":" + pad(d.getMinutes());
+  return d.getFullYear() === now.getFullYear() ? md + " " + hm : d.getFullYear() + "-" + md + " " + hm;
+}
+function renderNotes(){
+  const el = $("noteList");
+  if(!state.notes.length){ el.innerHTML = '<div class="empty">还没记任何东西——上面输入框随手记一条，回车即存。</div>'; return; }
+  el.innerHTML = state.notes.map((n,i)=>{
+    const time = fmtNoteTime(n.ts);
+    const del = `<span class="t-del" data-note-del="${i}">✕</span>`;
+    if(n.type === "note"){
+      return `<div class="note-item note-text">
+        <div class="n-body"><div class="n-text">${esc(n.text)}</div><div class="n-time">${time}</div></div>
+        ${del}
+      </div>`;
+    }
+    return `<div class="note-item ${n.done?'done':''}">
+      <div class="cb" data-note-check="${i}">${n.done?'✓':''}</div>
+      <div class="n-body"><div class="n-text">${esc(n.text)}</div><div class="n-time">${time}</div></div>
+      ${del}
+    </div>`;
+  }).join("");
+}
+
 /* ---------- 事件 ---------- */
 function openModal(id){ $(id).classList.add("on"); }
 function closeModal(id){ $(id).classList.remove("on"); }
@@ -390,6 +424,7 @@ $("tabToday").addEventListener("click", ()=>{ view="today"; render(); });
 $("tabBacklog").addEventListener("click", ()=>{ view="backlog"; render(); });
 $("tabSchedule").addEventListener("click", ()=>{ view="schedule"; render(); });
 $("tabWeek").addEventListener("click", ()=>{ view="week"; render(); });
+$("tabNotes").addEventListener("click", ()=>{ view="notes"; render(); });
 
 /* 从作息生成今日空闲 */
 $("genFrag").addEventListener("click", ()=>{
@@ -475,6 +510,10 @@ document.addEventListener("click", e=>{
   if(db){ state.backlog.splice(+db.dataset.delBacklog,1); save(); render(); return; }
   const dO = e.target.closest("[data-del-occ]");
   if(dO){ state.schedule.splice(+dO.dataset.delOcc,1); save(); render(); return; }
+  const nd = e.target.closest("[data-note-del]");
+  if(nd){ state.notes.splice(+nd.dataset.noteDel,1); save(); render(); return; }
+  const nc = e.target.closest("[data-note-check]");
+  if(nc){ state.notes[+nc.dataset.noteCheck].done = !state.notes[+nc.dataset.noteCheck].done; save(); render(); return; }
   const ck = e.target.closest("[data-check]");
   if(ck){
     const t = dayData().tasks[+ck.dataset.check];
@@ -494,6 +533,26 @@ $("segEnergy").addEventListener("click", e=>{
 $("segScene").addEventListener("click", e=>{
   const b = e.target.closest("button"); if(!b) return;
   scene = b.dataset.v; [...$("segScene").children].forEach(x=>x.classList.toggle("on", x===b));
+});
+
+/* 记事本：类型切换 / 记下 */
+$("segNoteType").addEventListener("click", e=>{
+  const b = e.target.closest("button"); if(!b) return;
+  noteType = b.dataset.v; [...$("segNoteType").children].forEach(x=>x.classList.toggle("on", x===b));
+});
+function addNote(){
+  const text = $("noteInput").value.trim();
+  if(!text){ $("noteInput").focus(); return; }
+  state.notes.unshift({ id:uid(), type:noteType, text, done:false, ts:Date.now() }); // 最新在前
+  $("noteInput").value = "";
+  save(); render();
+  $("noteInput").focus();
+}
+$("btnAddNote").addEventListener("click", addNote);
+$("noteInput").addEventListener("keydown", e=>{
+  if(e.key !== "Enter" || e.ctrlKey) return; // 普通回车保存；Ctrl+回车交给浏览器默认换行
+  e.preventDefault();
+  addNote();
 });
 $("btnSuggest").addEventListener("click", suggest);
 
