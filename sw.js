@@ -1,4 +1,4 @@
-const CACHE = "companion-plan-v1";
+const CACHE = "companion-plan-v2"; // 更新代码时把版本号 +1，旧缓存会自动清掉
 const ASSETS = ["./", "./index.html", "./styles.css", "./app.js", "./icon.svg", "./manifest.webmanifest"];
 
 self.addEventListener("install", e => {
@@ -15,12 +15,16 @@ self.addEventListener("activate", e => {
   );
 });
 
+// 网络优先：先读最新文件，成功就回填缓存；断网时才退回缓存兜底
 self.addEventListener("fetch", e => {
+  if (e.request.method !== "GET") return;
   e.respondWith(
-    caches.match(e.request).then(hit => hit || fetch(e.request).then(res => {
-      const copy = res.clone();
-      caches.open(CACHE).then(c => c.put(e.request, copy));
-      return res;
-    }))
+    fetch(e.request)
+      .then(res => {
+        const copy = res.clone();
+        caches.open(CACHE).then(c => c.put(e.request, copy));
+        return res;
+      })
+      .catch(() => caches.match(e.request))
   );
 });
