@@ -116,6 +116,19 @@ function applyTheme(t){
 }
 applyTheme(localStorage.getItem("companion-theme") || "violet");
 
+/* ---------- 设置（鼓励提醒频率 / 皮肤入口） ---------- */
+const SETTINGS_KEY = "companion-settings";
+const DEFAULT_SETTINGS = { cheerEvery: true, cheerMilestone: 0, cheerDone: true };
+let settings = loadSettings();
+function loadSettings(){
+  try {
+    const s = localStorage.getItem(SETTINGS_KEY);
+    if(s) return Object.assign({}, DEFAULT_SETTINGS, JSON.parse(s));
+  } catch(e){}
+  return Object.assign({}, DEFAULT_SETTINGS);
+}
+function saveSettings(){ localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); }
+
 function $(id){ return document.getElementById(id); }
 function esc(s){ return String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
 function uid(){ return "id"+Math.random().toString(36).slice(2,9); }
@@ -499,19 +512,35 @@ function closeModal(id){ $(id).classList.remove("on"); }
 
 $("datePicker").addEventListener("change", e => { state.date = e.target.value; save(); render(); });
 
-/* 主题皮肤切换 */
-$("themeBtn").addEventListener("click", e => {
-  e.stopPropagation();
-  $("themeMenu").classList.toggle("open");
+/* 设置面板 */
+$("settingsBtn").addEventListener("click", openSettings);
+$("mSettingsClose").addEventListener("click", ()=> closeModal("mSettings"));
+function openSettings(){
+  $("setCheerEvery").checked = settings.cheerEvery;
+  $("setCheerDone").checked = settings.cheerDone;
+  const ms = settings.cheerMilestone;
+  [...$("setCheerMilestone").children].forEach(x => x.classList.toggle("on", +x.dataset.v === ms));
+  renderThemeSwatches();
+  openModal("mSettings");
+}
+function renderThemeSwatches(){
+  const cur = document.body.dataset.theme;
+  document.querySelectorAll("[data-set-theme]").forEach(b => b.classList.toggle("on", b.dataset.setTheme === cur));
+}
+$("setCheerEvery").addEventListener("change", e => { settings.cheerEvery = e.target.checked; saveSettings(); });
+$("setCheerDone").addEventListener("change", e => { settings.cheerDone = e.target.checked; saveSettings(); });
+$("setCheerMilestone").addEventListener("click", e => {
+  const b = e.target.closest("button"); if(!b) return;
+  settings.cheerMilestone = +b.dataset.v; saveSettings();
+  [...$("setCheerMilestone").children].forEach(x => x.classList.toggle("on", x === b));
 });
-$("themeMenu").addEventListener("click", e => {
-  const b = e.target.closest("button[data-theme]");
+$("mSettings").addEventListener("click", e => {
+  const b = e.target.closest("[data-set-theme]");
   if(!b) return;
-  applyTheme(b.dataset.theme);
-  $("themeMenu").classList.remove("open");
-  toast("皮肤：" + THEME_NAMES[b.dataset.theme]);
+  applyTheme(b.dataset.setTheme);
+  renderThemeSwatches();
+  toast("皮肤：" + THEME_NAMES[b.dataset.setTheme]);
 });
-document.addEventListener("click", () => $("themeMenu").classList.remove("open"));
 $("tabToday").addEventListener("click", ()=>{ view="today"; render(); });
 $("tabBacklog").addEventListener("click", ()=>{ view="backlog"; render(); });
 $("tabSchedule").addEventListener("click", ()=>{ view="schedule"; render(); });
@@ -621,7 +650,7 @@ document.addEventListener("click", e=>{
         const b = state.backlog.find(x => x.id === t.backlogId);
         if(b) b.lastDone = todayStr();
       }
-      toast(pick(CHEER)); // 打卡成功，弹一句鼓励
+      cheerOnCheck(); // 按设置里的频率弹鼓励
     }
     save(); render(); return;
   }
@@ -670,6 +699,31 @@ const CHEER = [
   "搞定，比昨天强",
   "今天也没落下",
 ];
+const CHEER_MILESTONE = [
+  "今天已经勾掉 {n} 个了",
+  "第 {n} 个，这个劲攒起来了",
+  "连续 {n} 件拿下，稳",
+  "{n} 个了，比想象中快",
+];
+const CHEER_DONE = [
+  "今天的任务全清完了",
+  "今天收工，漂亮",
+  "全都做完了，好好歇着",
+  "今天这一页翻过去了，干得漂亮",
+];
+function milestoneCheer(n){ return pick(CHEER_MILESTONE).replace(/\{n\}/g, n); }
+function cheerOnCheck(){
+  const d = dayData();
+  const doneCount = d.tasks.filter(t => t.done).length;
+  const total = d.tasks.length;
+  if(settings.cheerDone && total > 0 && doneCount >= total){
+    toast(pick(CHEER_DONE));
+  } else if(settings.cheerMilestone > 0 && doneCount === settings.cheerMilestone){
+    toast(milestoneCheer(settings.cheerMilestone));
+  } else if(settings.cheerEvery){
+    toast(pick(CHEER));
+  }
+}
 let toastTimer;
 function toast(msg){
   const t = $("toast");

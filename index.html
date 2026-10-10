@@ -20,15 +20,9 @@
     <div class="brand-row">
       <div class="brand"><span class="mark">✓</span>陪伴<em>·</em>计划</div>
       <div class="datebox">
-        <div class="theme-wrap">
-          <button id="themeBtn" class="theme-btn" title="换皮肤"><span class="theme-dot"></span></button>
-          <div class="theme-menu" id="themeMenu">
-            <button data-theme="violet"><i class="t-swatch violet"></i>紫藤</button>
-            <button data-theme="teal"><i class="t-swatch teal"></i>青竹</button>
-            <button data-theme="amber"><i class="t-swatch amber"></i>暖阳</button>
-            <button data-theme="ink"><i class="t-swatch ink"></i>墨蓝</button>
-          </div>
-        </div>
+        <button id="settingsBtn" class="settings-btn" title="设置" aria-label="设置">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        </button>
         <input type="date" id="datePicker">
       </div>
     </div>
@@ -207,6 +201,42 @@
       </div>
     </div>
     <div class="actions"><button id="mOccCancel">取消</button><button class="primary" id="mOccOk">保存</button></div>
+  </div>
+</div>
+
+<!-- 弹窗：设置 -->
+<div class="modal-mask" id="mSettings">
+  <div class="modal">
+    <h3>设置</h3>
+    <div class="set-group">
+      <div class="set-label">界面颜色</div>
+      <div class="set-themes">
+        <button data-set-theme="violet"><i class="t-swatch violet"></i>紫藤</button>
+        <button data-set-theme="teal"><i class="t-swatch teal"></i>青竹</button>
+        <button data-set-theme="amber"><i class="t-swatch amber"></i>暖阳</button>
+        <button data-set-theme="ink"><i class="t-swatch ink"></i>墨蓝</button>
+      </div>
+    </div>
+    <div class="set-group">
+      <div class="set-label">勾掉任务时的鼓励</div>
+      <div class="set-row">
+        <span class="set-name">每次勾掉就弹一句</span>
+        <label class="switch"><input type="checkbox" id="setCheerEvery"><i></i></label>
+      </div>
+      <div class="set-row">
+        <span class="set-name">勾到一定数量时弹</span>
+        <div class="seg" id="setCheerMilestone">
+          <button data-v="0">关</button>
+          <button data-v="3">3 个</button>
+          <button data-v="5">5 个</button>
+        </div>
+      </div>
+      <div class="set-row">
+        <span class="set-name">今天任务全做完时弹</span>
+        <label class="switch"><input type="checkbox" id="setCheerDone"><i></i></label>
+      </div>
+    </div>
+    <div class="actions"><button class="primary" id="mSettingsClose">完成</button></div>
   </div>
 </div>
 
