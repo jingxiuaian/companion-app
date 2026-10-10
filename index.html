@@ -3,11 +3,11 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#5B5BD6">
+<meta name="theme-color" content="#16171F">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="陪伴·计划">
-<meta name="description" content="在碎片时间里推进多目标，并在提前完成后告诉你多出的时间该干嘛。">
+<meta name="description" content="把空余时间拆成今天就能做完的最小动作，陪你度过坚持里最难的那段，断了就接回来。">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='24' fill='%235B5BD6'/%3E%3Cpath d='M28 52 L44 68 L74 34' stroke='white' stroke-width='9' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="styles.css">
 <link rel="manifest" href="manifest.webmanifest">
@@ -20,6 +20,15 @@
     <div class="brand-row">
       <div class="brand"><span class="mark">✓</span>陪伴<em>·</em>计划</div>
       <div class="datebox">
+        <div class="theme-wrap">
+          <button id="themeBtn" class="theme-btn" title="换皮肤"><span class="theme-dot"></span></button>
+          <div class="theme-menu" id="themeMenu">
+            <button data-theme="violet"><i class="t-swatch violet"></i>紫藤</button>
+            <button data-theme="teal"><i class="t-swatch teal"></i>青竹</button>
+            <button data-theme="amber"><i class="t-swatch amber"></i>暖阳</button>
+            <button data-theme="ink"><i class="t-swatch ink"></i>墨蓝</button>
+          </div>
+        </div>
         <input type="date" id="datePicker">
       </div>
     </div>

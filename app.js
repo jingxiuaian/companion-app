@@ -74,7 +74,29 @@ function load(){
   return seedState();
 }
 function save(){ localStorage.setItem(STORE_KEY, JSON.stringify(state)); }
-function dayData(){ if(!state.days[state.date]) state.days[state.date] = {fragments:[], tasks:[]}; return state.days[state.date]; }
+function dayData(){
+  let d = state.days[state.date];
+  if(!d) d = state.days[state.date] = {fragments:[], tasks:[], skipped:[]};
+  if(!d.skipped) d.skipped = []; // 旧数据补默认值
+  return d;
+}
+
+/* 每天打开时，把"今天到期"的日常习惯自动列进今日计划（只列任务、不排具体时间段） */
+function autoGenHabits(){
+  if(state.date !== todayStr()) return; // 只对"今天"自动生成，历史/未来不塞
+  const d = dayData();
+  let changed = false;
+  state.backlog.forEach(b => {
+    if(b.type !== "habit") return;
+    const gap = b.lastDone ? daysSince(b.lastDone) : Infinity; // 从没做过 = 立即到期
+    if(gap < (b.interval || 1)) return;                          // 还没到该做的日子
+    if(d.skipped.includes(b.id)) return;                         // 今天手动删过，别再塞回来
+    if(d.tasks.some(t => t.backlogId === b.id)) return;          // 已经列在今日计划里了
+    d.tasks.push({ id: uid(), backlogId: b.id, title: b.name, min: b.min, done: false, kind: "habit" });
+    changed = true;
+  });
+  if(changed) save();
+}
 
 state.date = todayStr(); // 每次打开都回到今天，不管上次停在哪
 let view = "today";
@@ -82,12 +104,25 @@ let energy = "高", scene = "可外出";
 let noteType = "todo"; // 记事本当前输入类型：todo=清单 / note=文字
 let lastSugg = null; // 最近一次建议结果，render 后仍保留
 
+/* ---------- 主题皮肤 ---------- */
+const THEME_NAMES = { violet:"紫藤", teal:"青竹", amber:"暖阳", ink:"墨蓝" };
+const THEME_META = { violet:"#16171F", teal:"#0F1415", amber:"#17130F", ink:"#12131C" };
+function applyTheme(t){
+  if(!THEME_NAMES[t]) t = "violet"; // 旧存的 auto 或非法值，统一归到紫藤
+  document.body.dataset.theme = t;
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if(meta) meta.content = THEME_META[t] || "#16171F";
+  localStorage.setItem("companion-theme", t);
+}
+applyTheme(localStorage.getItem("companion-theme") || "violet");
+
 function $(id){ return document.getElementById(id); }
 function esc(s){ return String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
 function uid(){ return "id"+Math.random().toString(36).slice(2,9); }
 
 /* ---------- 渲染 ---------- */
 function render(){
+  autoGenHabits();
   $("datePicker").value = state.date;
   $("tabToday").classList.toggle("on", view==="today");
   $("tabBacklog").classList.toggle("on", view==="backlog");
@@ -143,15 +178,20 @@ function renderTasks(){
   const d = dayData();
   const el = $("taskList");
   if(!d.tasks.length){ el.innerHTML = '<div class="empty">还没安排任务，点"＋ 安排任务"。</div>'; return; }
-  el.innerHTML = d.tasks.map((t,i)=>`
+  el.innerHTML = d.tasks.map((t,i)=>{
+    const tag = t.kind === "habit"
+      ? '<span class="t-tag">日常</span>'
+      : '<span class="t-tag t-tag-tmp">临时</span>';
+    return `
     <div class="task ${t.done?'done':''}">
       <div class="cb" data-check="${i}">${t.done?'✓':''}</div>
       <div class="t-body">
-        <div class="t-title">${esc(t.title)}</div>
+        <div class="t-title">${tag}${esc(t.title)}</div>
         <div class="t-meta">${fmtDur(t.min)}${(t.start&&t.end)?`<span class="t-time">${t.start}–${t.end}</span>`:""}</div>
       </div>
       <span class="t-del" data-del-task="${i}">✕</span>
-    </div>`).join("");
+    </div>`;
+  }).join("");
 }
 
 function renderBacklog(){
@@ -222,6 +262,7 @@ function renderSuggList(){
 }
 
 /* ---------- 建议引擎 ---------- */
+function pick(arr){ return arr[Math.floor(Math.random()*arr.length)]; }
 function suggest(){
   const d = dayData();
   const totalMin = d.fragments.reduce((s,f)=>s+fragMin(f),0);
@@ -239,20 +280,38 @@ function suggest(){
       if(b.type === "deadline" && b.deadline){
         const dd = daysUntil(b.deadline);
         dyn = Math.max(0, 14 - dd) * 15; // 越接近截止越急，≤0 天最高 210
-        reason = `距 ${b.unit||"截止"} 还有 ${dd} 天`;
+        reason = pick([
+          `${b.unit||"截止"} 还剩 ${dd} 天，做一点就少一点`,
+          `${b.unit||"截止"} 剩 ${dd} 天了，今天啃一小块就松一点`,
+          `离 ${b.unit||"截止"} 还有 ${dd} 天，来得及，别攒到最后`,
+          `${b.unit||"截止"} 还有 ${dd} 天，一天一点点就够`,
+        ]);
       } else if(b.type === "habit"){
         const gap = daysSince(b.lastDone);
         const due = b.interval || 1;
         if(gap >= due){
           dyn = (gap - due + 1) * 10; // 到期后每多欠一天 +10
-          reason = `「${b.name}」已经 ${gap} 天没做了`;
+          reason = pick([
+            `「${b.name}」断了 ${gap} 天，今天做一点就接上了`,
+            `「${b.name}」歇了 ${gap} 天，没关系，今天补一小份就回来`,
+            `「${b.name}」空窗 ${gap} 天了，现在接回来刚刚好`,
+            `「${b.name}」有 ${gap} 天没碰，今天先做 5 分钟，别让它继续断`,
+          ]);
         } else {
           dyn = -1000; // 还没到点 / 今天做过了：压到末尾
-          reason = `「${b.name}」最近做过了`;
+          reason = pick([
+            `「${b.name}」最近有在做，保持住`,
+            `「${b.name}」这几天的节奏不错，别松`,
+            `「${b.name}」你在坚持，很好，继续保持`,
+          ]);
         }
       }
       if(b.hint) reason = reason ? reason + " · " + b.hint : b.hint;
-      else if(!reason && b.must) reason = "你的刚需主线，每天雷打不动";
+      else if(!reason && b.must) reason = pick([
+        "这是你的主线，今天守住它",
+        "这条对你最重要，今天别落下",
+        "你的主线，今天就把它做完，别拖",
+      ]);
       const over = remaining - b.min;
       const fit = over <= 15 ? 1.5 : (over <= 45 ? 0.8 : 0.2);
       const pri = state.backlog.length - state.backlog.indexOf(b); // 位置越靠前优先级越高
@@ -328,6 +387,17 @@ function weekDates(){
   for(let i=0;i<7;i++) out.push(addDaysStr(todayStr(), mondayOffset + i));
   return out;
 }
+function dayHasDone(ds){
+  const d = state.days[ds];
+  return !!(d && d.tasks.some(t => t.done));
+}
+function streakDays(){
+  let n = 0;
+  let ds = todayStr();
+  if(!dayHasDone(ds)) ds = addDaysStr(ds, -1); // 今天还没打卡，从昨天往前算（今天没结束，不算断）
+  while(dayHasDone(ds)){ n++; ds = addDaysStr(ds, -1); }
+  return n;
+}
 function weekStats(){
   const dates = weekDates();
   let done=0, total=0;
@@ -345,17 +415,25 @@ function weekStats(){
       }
     }
   }
-  return {done, total, byCat};
+  return {done, total, byCat, streak: streakDays()};
+}
+function cheerLine(streak, rate, total){
+  if(streak >= 3) return `连续打卡 ${streak} 天，比上周更稳。`;
+  if(streak >= 1) return `已经连续 ${streak} 天，今天也别断。`;
+  if(total && rate >= 60) return `本周完成率 ${rate}%，节奏不错。`;
+  if(total && rate > 0) return `本周开了个头，接着往下走。`;
+  return `今天还没打卡，先做一件小的。`;
 }
 function renderWeek(){
   const st = weekStats();
   const cats = Object.entries(st.byCat).sort((a,b)=>b[1]-a[1]);
   const rate = st.total ? Math.round(st.done/st.total*100) : 0;
   $("weekStats").innerHTML = `
+    <div class="cheer">${cheerLine(st.streak, rate, st.total)}</div>
     <div class="stat-row">
-      <div class="stat"><div class="stat-n">${st.done}/${st.total}</div><div class="stat-l">本周完成打卡</div></div>
+      <div class="stat"><div class="stat-n">${st.streak} 天</div><div class="stat-l">连续打卡</div></div>
+      <div class="stat"><div class="stat-n">${st.done}/${st.total}</div><div class="stat-l">本周完成</div></div>
       <div class="stat"><div class="stat-n">${rate}%</div><div class="stat-l">完成率</div></div>
-      <div class="stat"><div class="stat-n">${cats.length ? fmtDur(cats[0][1]) : "0m"}</div><div class="stat-l">最多投入·${cats.length ? esc(cats[0][0]) : "—"}</div></div>
     </div>
     ${cats.length ? `<div class="stat-cats">${cats.map(([k,v])=>`<span class="scat"><b>${esc(k)}</b> ${fmtDur(v)}</span>`).join("")}</div>` : ""}`;
 
@@ -420,6 +498,20 @@ function openModal(id){ $(id).classList.add("on"); }
 function closeModal(id){ $(id).classList.remove("on"); }
 
 $("datePicker").addEventListener("change", e => { state.date = e.target.value; save(); render(); });
+
+/* 主题皮肤切换 */
+$("themeBtn").addEventListener("click", e => {
+  e.stopPropagation();
+  $("themeMenu").classList.toggle("open");
+});
+$("themeMenu").addEventListener("click", e => {
+  const b = e.target.closest("button[data-theme]");
+  if(!b) return;
+  applyTheme(b.dataset.theme);
+  $("themeMenu").classList.remove("open");
+  toast("皮肤：" + THEME_NAMES[b.dataset.theme]);
+});
+document.addEventListener("click", () => $("themeMenu").classList.remove("open"));
 $("tabToday").addEventListener("click", ()=>{ view="today"; render(); });
 $("tabBacklog").addEventListener("click", ()=>{ view="backlog"; render(); });
 $("tabSchedule").addEventListener("click", ()=>{ view="schedule"; render(); });
@@ -505,7 +597,13 @@ document.addEventListener("click", e=>{
   const df = e.target.closest("[data-del-frag]");
   if(df){ dayData().fragments.splice(+df.dataset.delFrag,1); save(); render(); return; }
   const dt = e.target.closest("[data-del-task]");
-  if(dt){ dayData().tasks.splice(+dt.dataset.delTask,1); save(); render(); return; }
+  if(dt){
+    const d = dayData();
+    const t = d.tasks[+dt.dataset.delTask];
+    if(t && t.kind === "habit" && t.backlogId && !d.skipped.includes(t.backlogId)) d.skipped.push(t.backlogId);
+    d.tasks.splice(+dt.dataset.delTask,1);
+    save(); render(); return;
+  }
   const db = e.target.closest("[data-del-backlog]");
   if(db){ state.backlog.splice(+db.dataset.delBacklog,1); save(); render(); return; }
   const dO = e.target.closest("[data-del-occ]");
@@ -518,9 +616,12 @@ document.addEventListener("click", e=>{
   if(ck){
     const t = dayData().tasks[+ck.dataset.check];
     t.done = !t.done;
-    if(t.done && t.backlogId){
-      const b = state.backlog.find(x => x.id === t.backlogId);
-      if(b) b.lastDone = todayStr();
+    if(t.done){
+      if(t.backlogId){
+        const b = state.backlog.find(x => x.id === t.backlogId);
+        if(b) b.lastDone = todayStr();
+      }
+      toast(pick(CHEER)); // 打卡成功，弹一句鼓励
     }
     save(); render(); return;
   }
@@ -561,6 +662,14 @@ document.querySelectorAll(".modal-mask").forEach(m=>{
 });
 
 /* ---------- 轻提示 ---------- */
+const CHEER = [
+  "做完了，漂亮",
+  "这一件拿下",
+  "又往前挪了一步",
+  "不错，接着来",
+  "搞定，比昨天强",
+  "今天也没落下",
+];
 let toastTimer;
 function toast(msg){
   const t = $("toast");
@@ -613,12 +722,27 @@ if("serviceWorker" in navigator){
 }
 function maybeRemind(){
   if(!("Notification" in window) || Notification.permission !== "granted") return;
-  const en = state.backlog.find(b=>b.must);
-  if(!en || en.type !== "habit") return;
-  if(daysSince(en.lastDone) < (en.interval || 1)) return;
   const d = state.days[todayStr()];
-  const todayDone = d && d.tasks.some(t=>t.backlogId===en.id && t.done);
-  if(!todayDone) new Notification("陪伴·计划", { body:`${en.name} 还没打卡——今天记得做哦。` });
+  // 找"逾期且今天还没做"的习惯，断得最久的排前面，只弹它一条接回文案
+  const overdue = state.backlog
+    .filter(b => b.type === "habit")
+    .map(b => ({ b, gap: b.lastDone ? daysSince(b.lastDone) : Infinity }))
+    .filter(x => x.gap >= (x.b.interval || 1))
+    .filter(x => !(d && d.tasks.some(t => t.backlogId === x.b.id && t.done)))
+    .sort((a,b) => b.gap - a.gap);
+  if(!overdue.length) return;
+  const { b, gap } = overdue[0];
+  const body = isFinite(gap)
+    ? pick([
+        `「${b.name}」断了 ${gap} 天，今天做一点就接上了`,
+        `「${b.name}」空窗 ${gap} 天了，现在接回来刚刚好`,
+        `「${b.name}」有 ${gap} 天没碰，今天先做 5 分钟，别让它继续断`,
+      ])
+    : pick([
+        `「${b.name}」好久没碰了，今天做一点就接上`,
+        `「${b.name}」该回来了，今天做一小份就续上`,
+      ]);
+  new Notification("陪伴·计划", { body });
 }
 if("Notification" in window && Notification.permission === "default"){
   window.addEventListener("load", ()=>{ Notification.requestPermission(); });
