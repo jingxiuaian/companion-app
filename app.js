@@ -337,33 +337,102 @@ function renderSchedule(){
 function renderSuggList(){
   const el = $("suggList");
   if(!lastSugg){ el.innerHTML = ""; return; }
-  if(lastSugg.empty){ el.innerHTML = `<div class="empty" style="padding-top:14px">${esc(lastSugg.note || "暂时没有合适的事项。")}</div>`; return; }
-  if(!lastSugg.singles.length && !lastSugg.combos.length){ el.innerHTML = ""; return; }
+  const s = lastSugg;
   let html = "";
   if(isRestDay(state.date)) html += `<div class="rest-note">今天是休息日，时间宽裕，挑一件想做的慢慢做就好。</div>`;
-  html += `<div style="font-size:12px;color:var(--sub);margin-top:12px">当前可支配 <b style="color:var(--brand)">${fmtDur(lastSugg.remaining)}</b>，建议：</div>`;
-  html += lastSugg.singles.map((c,i)=>`
-    <div class="sugg-card">
-      <div class="rank">建议 ${i+1}</div>
-      <div class="s-name">${esc(c.item.name)}<span class="s-fit">${c.fit}</span></div>
-      <div class="s-reason">${esc(c.reason)} · 用 ${fmtDur(c.item.min)} 左右</div>
-      <button class="sched-btn" data-sugg-single="${i}">排进空闲时间</button>
-    </div>`).join("");
-  if(lastSugg.combos.length){
-    html += `<div class="combo-hd">组合建议 · 一次做两件</div>`;
-    html += lastSugg.combos.map((c,i)=>`
-      <div class="sugg-card combo">
-        <div class="rank">组合 ${i+1}</div>
-        <div class="s-name">${c.items.map(x=>esc(x.name)).join(" + ")}<span class="s-fit">${fmtDur(c.totalMin)}</span></div>
-        <div class="s-reason">${esc(c.reason)} · 正好用满 ${fmtDur(c.totalMin)}</div>
-        <button class="sched-btn" data-sugg-combo="${i}">一起排进</button>
+
+  // 一、事项池建议（还有没安排的才显示）
+  if(s.singles.length || s.combos.length){
+    html += `<div style="font-size:12px;color:var(--sub);margin-top:12px">当前可支配 <b style="color:var(--brand)">${fmtDur(s.remaining)}</b>，建议：</div>`;
+    html += s.singles.map((c,i)=>`
+      <div class="sugg-card">
+        <div class="rank">建议 ${i+1}</div>
+        <div class="s-name">${esc(c.item.name)}<span class="s-fit">${c.fit}</span></div>
+        <div class="s-reason">${esc(c.reason)} · 用 ${fmtDur(c.item.min)} 左右</div>
+        <button class="sched-btn" data-sugg-single="${i}">排进空闲时间</button>
       </div>`).join("");
+    if(s.combos.length){
+      html += `<div class="combo-hd">组合建议 · 一次做两件</div>`;
+      html += s.combos.map((c,i)=>`
+        <div class="sugg-card combo">
+          <div class="rank">组合 ${i+1}</div>
+          <div class="s-name">${c.items.map(x=>esc(x.name)).join(" + ")}<span class="s-fit">${fmtDur(c.totalMin)}</span></div>
+          <div class="s-reason">${esc(c.reason)} · 正好用满 ${fmtDur(c.totalMin)}</div>
+          <button class="sched-btn" data-sugg-combo="${i}">一起排进</button>
+        </div>`).join("");
+    }
+  } else if(!s.rest){
+    html += `<div class="empty" style="padding-top:14px">${esc(s.note || "暂时没有合适的事项。")}</div>`;
   }
+
+  // 二、今日清空后的"恢复类"建议（不带目标，也不给按钮）
+  if(s.rest) html += restBlock(s.rest);
   el.innerHTML = html;
+}
+function restBlock(rest){
+  const line = !rest.items.length
+    ? "时间刚好用满"
+    : (rest.earned > 0
+        ? `今天提前省下 ${fmtDur(rest.earned)}，现在空出 <b>${fmtDur(rest.remaining)}</b>`
+        : `现在空出 <b>${fmtDur(rest.remaining)}</b>`);
+  const items = rest.items.length
+    ? rest.items.map(t => `<div class="rest-item">${esc(t)}</div>`).join("")
+    : `<div class="rest-item rest-none">没什么要往里塞的了，今天到此为止。</div>`;
+  return `
+    <div class="rest-block">
+      <div class="rest-hd">今天的都做完了</div>
+      <div class="rest-sub">${line}</div>
+      ${items}
+    </div>`;
 }
 
 /* ---------- 建议引擎 ---------- */
 function pick(arr){ return arr[Math.floor(Math.random()*arr.length)]; }
+function sceneAllow(it){ return scene === "可外出" || it.scene !== "室外"; }
+
+/* 恢复类建议：今日计划全部完成后，按"此刻空着的时间"给的不带目标的建议。
+   跟事项池建议的区别是这些不进计划、不排时间段，也不该被当成任务。
+   scene / energy 只用于筛选能不能做（跟事项池一套规则），不参与文案。 */
+const REST_TIERS = [
+  { max: 10, items: [
+    { t:"站起来转转肩颈，伸个懒腰", scene:"室内", energy:"低" },
+    { t:"做套眼保健操，或者往窗外远处看 30 秒", scene:"室内", energy:"低" },
+    { t:"倒杯水，顺手把杯子洗了", scene:"室内", energy:"低" },
+  ]},
+  { max: 25, items: [
+    { t:"泡杯茶坐着发会儿呆", scene:"室内", energy:"低" },
+    { t:"冲个热水澡，把今天的劲儿卸下来", scene:"室内", energy:"中" },
+    { t:"下楼走两圈，晒晒太阳", scene:"室外", energy:"中" },
+    { t:"把桌面收一小块，看着舒服点", scene:"室内", energy:"中" },
+  ]},
+  { max: 45, items: [
+    { t:"出门散散步，别戴耳机，听听外面的声音", scene:"室外", energy:"中" },
+    { t:"听一张专辑，或者一期播客，躺着就行", scene:"不限", energy:"低" },
+    { t:"小睡 20 分钟，设个闹钟，别超过 30", scene:"室内", energy:"低" },
+  ]},
+  { max: 75, items: [
+    { t:"读几页书，不为读完，困了就放下", scene:"室内", energy:"中" },
+    { t:"看一集纪录片，挑一直想看的那部", scene:"室内", energy:"低" },
+    { t:"写点不给人看的东西，今天是怎么过的", scene:"室内", energy:"中" },
+  ]},
+  { max: 120, items: [
+    { t:"看一部电影，中间不刷手机那种", scene:"室内", energy:"低" },
+    { t:"骑车或者走远一点，去个平时不去的地方", scene:"室外", energy:"高" },
+    { t:"约个人见一面，或者给家里打个电话", scene:"不限", energy:"低" },
+  ]},
+  { max: Infinity, items: [
+    { t:"这么长的时间，够做一件你一直想排、却一直没排上的事", scene:"不限", energy:"中" },
+    { t:"也够什么都不干，今天该做的都做完了，剩下的归你", scene:"不限", energy:"低" },
+  ]},
+];
+function restIdeas(remaining){
+  const tier = REST_TIERS.find(t => remaining <= t.max) || REST_TIERS[REST_TIERS.length - 1];
+  let fits = tier.items.filter(sceneAllow).filter(it => energyAllow(energy, it.energy));
+  if(!fits.length) fits = tier.items; // 这一档全被场景/精力筛掉了就退回原样，别给空
+  const left = fits.slice(), out = [];
+  while(out.length < 2 && left.length) out.push(left.splice(Math.floor(Math.random()*left.length), 1)[0].t);
+  return out;
+}
 function suggest(){
   const d = dayData();
   const baseFree = freeMinOf(d); // 已完成按实际耗时算：提前完成省下的时间会体现在这里
@@ -376,7 +445,7 @@ function suggest(){
   const poolLeft = state.backlog.filter(b => !inPlan.has(b.id) && b.lastDone !== today);
   const cands = poolLeft
     .filter(b => b.min <= remaining)
-    .filter(b => scene === "可外出" || b.scene !== "室外")
+    .filter(sceneAllow)
     .filter(b => energyAllow(energy, b.energy))
     .map(b => {
       let dyn = 0, reason = "";
@@ -448,19 +517,25 @@ function suggest(){
   let note = "";
   if(!cands.length){
     if(!state.backlog.length){
-      note = "事项池还是空的——先去「事项池」页添加几件想做的事。";
+      note = "事项池还是空的，先去「事项池」页添加几件想做的事。";
     } else if(!poolLeft.length){
-      note = (d.tasks.length && d.tasks.every(t => t.done))
-        ? "今天的计划全部完成了，事项池里的事项今天也都安排过——加一件新的，或者就好好歇着。"
-        : "事项池里的事项今天都已经排进计划了，去今日计划里把它们做掉吧。";
+      note = "事项池里的事项今天都已经排进计划了，去今日计划里把它们做掉吧。";
     } else {
       const shortest = Math.min.apply(null, poolLeft.map(b => b.min));
       note = (shortest > remaining)
         ? `当前可支配 ${fmtDur(remaining)}，还有 ${poolLeft.length} 件没安排，但最短的一件也要 ${fmtDur(shortest)}。`
-        : "剩下这几件在当下的精力 / 环境下都不合适——换个精力档位，或者去室外试试。";
+        : "剩下这几件在当下的精力 / 环境下都不合适，换个精力档位，或者去室外试试。";
     }
   }
-  lastSugg = { remaining, singles, combos: topCombos, empty: cands.length === 0, note };
+
+  // 今日计划全部完成 → 附上"恢复类"建议，按此刻空着的时间分档
+  const allDone = d.tasks.length > 0 && d.tasks.every(t => t.done);
+  let rest = null;
+  if(allDone){
+    const earned = d.tasks.reduce((s,t) => s + (t.min - spentMin(t)), 0); // 提前省下的总和；做超时就是负数
+    rest = { earned, remaining, items: remaining >= 5 ? restIdeas(remaining) : [] };
+  }
+  lastSugg = { remaining, singles, combos: topCombos, empty: cands.length === 0, note, rest };
   renderSuggList();
 }
 

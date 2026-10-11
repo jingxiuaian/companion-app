@@ -263,6 +263,15 @@ header.top {
 .combo-hd { font-size: 12px; color: var(--sub); margin: 16px 0 0; font-weight: 600; }
 .sugg-card.combo { border-style: dashed; border-color: var(--brand); }
 
+/* 今日清空后的"恢复类"建议：跟事项池建议区分开，不给按钮、不用卡片堆叠 */
+.rest-block { margin-top: 16px; padding: 13px 14px; border-radius: 13px; background: var(--brand-soft); border: 1px solid var(--line); }
+.rest-block .rest-hd { font-size: 13px; font-weight: 700; color: var(--brand); }
+.rest-block .rest-sub { font-size: 12px; color: var(--sub); margin-top: 3px; }
+.rest-block .rest-sub b { color: var(--brand); }
+.rest-block .rest-item { position: relative; font-size: 13.5px; line-height: 1.5; margin-top: 9px; padding-left: 13px; }
+.rest-block .rest-item::before { content: "·"; position: absolute; left: 3px; color: var(--brand); font-weight: 700; }
+.rest-block .rest-item.rest-none { color: var(--sub); }
+
 /* 碎片里已排的任务 */
 .frag-task { display: flex; align-items: center; gap: 8px; font-size: 12.5px; padding: 3px 4px 9px; }
 .frag-task .ft-time { font-variant-numeric: tabular-nums; color: var(--brand); font-weight: 600; }
