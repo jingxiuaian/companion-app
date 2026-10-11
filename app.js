@@ -362,7 +362,7 @@ function renderSuggList(){
         <div class="rank">建议 ${i+1}</div>
         <div class="s-name">${esc(c.item.name)}<span class="s-fit">${c.fit}</span></div>
         <div class="s-reason">${esc(c.reason)} · 用 ${fmtDur(c.item.min)} 左右</div>
-        <button class="sched-btn" data-sugg-single="${i}">排进空闲时间</button>
+        <button class="sched-btn" data-sugg-single="${i}">放进空闲时间</button>
       </div>`).join("");
     if(s.combos.length){
       html += `<div class="combo-hd">组合建议 · 一次做两件</div>`;
@@ -371,7 +371,7 @@ function renderSuggList(){
           <div class="rank">组合 ${i+1}</div>
           <div class="s-name">${c.items.map(x=>esc(x.name)).join(" + ")}<span class="s-fit">${fmtDur(c.totalMin)}</span></div>
           <div class="s-reason">${esc(c.reason)} · 正好用满 ${fmtDur(c.totalMin)}</div>
-          <button class="sched-btn" data-sugg-combo="${i}">一起排进</button>
+          <button class="sched-btn" data-sugg-combo="${i}">一起放进去</button>
         </div>`).join("");
     }
   } else if(!s.rest){
@@ -535,7 +535,7 @@ function suggest(){
     if(!state.backlog.length){
       note = "事项池还是空的，先去「事项池」页添加几件想做的事。";
     } else if(!poolLeft.length){
-      note = "事项池里的事项今天都已经排进计划了，去今日计划里把它们做掉吧。";
+      note = "事项池里的事项今天都已经在今日计划里了，去把它们做掉吧。";
     } else {
       const shortest = Math.min.apply(null, poolLeft.map(b => b.min));
       note = (shortest > remaining)
@@ -592,8 +592,8 @@ function scheduleItems(list){
   }
   lastSugg = null; // 排完清掉，重新点"给我一点建议"拿最新空闲
   save(); render();
-  if(placed.length) toast("已排进：" + placed.join("、"));
-  if(failed.length) toast("没排下：" + failed.join("、") + "（空闲时间不够）");
+  if(placed.length) toast("已放进：" + placed.join("、"));
+  if(failed.length) toast("放不下：" + failed.join("、") + "（空闲时间不够）");
 }
 
 /* ---------- 周视图 ---------- */
@@ -870,7 +870,7 @@ function importTasks(items, opts){
   if(!added){ toast("没有新任务要导入"); return; }
   const parts = [];
   if(scheduled.length) parts.push(scheduled.map(x => `${x.name} ${x.at}`).join("、"));
-  if(unscheduled.length) parts.push(`${unscheduled.join("、")}（待排时间）`);
+  if(unscheduled.length) parts.push(`${unscheduled.join("、")}（还没定时间）`);
   const tail = skipped.length ? `；另有 ${skipped.length} 条今天已有，跳过` : "";
   toast(`已导入 ${added} 条：${parts.join("；")}${tail}`);
 }
@@ -893,7 +893,7 @@ function openImportPick(){
     return `
     <label class="ip-item">
       <input type="checkbox" value="${b.id}" ${(!n && dueIds.has(b.id)) ? "checked" : ""}>
-      <span>${esc(b.name)}${n ? `<i class="ip-dup">今日已排 ${n} 条 · 再勾会新增 1 条</i>` : ""}</span>
+      <span>${esc(b.name)}${n ? `<i class="ip-dup">今日计划里已有 ${n} 条，再勾会新增 1 条</i>` : ""}</span>
       <em>${meta}</em>
     </label>`;
   }).join("");
