@@ -849,7 +849,7 @@ function importTasks(items, opts){
   lastSugg = null;
   save(); render();
   const added = scheduled.length + unscheduled.length;
-  if(!added){ toast(`这 ${skipped.length} 条今天都已经在计划里了，没有新的要导入`); return; }
+  if(!added){ toast("没有新任务要导入"); return; }
   const parts = [];
   if(scheduled.length) parts.push(scheduled.map(x => `${x.name} ${x.at}`).join("、"));
   if(unscheduled.length) parts.push(`${unscheduled.join("、")}（待排时间）`);
