@@ -19,6 +19,8 @@ const DAY_NAMES = ["一","二","三","四","五","六","日"];
 function pad(n){ return String(n).padStart(2, "0"); }
 function daysUntil(deadline){ return Math.round((new Date(deadline+"T00:00:00") - new Date(todayStr()+"T00:00:00")) / MS_DAY); }
 function daysSince(lastDone){ return Math.round((new Date(todayStr()+"T00:00:00") - new Date(lastDone+"T00:00:00")) / MS_DAY); }
+/* 习惯"欠了多久"：从没做过 = Infinity（一直欠着）。新建条目就是这种状态，不是"今天做过了"。 */
+function habitGap(b){ return b.lastDone ? daysSince(b.lastDone) : Infinity; }
 function weekdayOf(dateStr){ const d = new Date(dateStr+"T00:00:00").getDay(); return d === 0 ? 7 : d; } // 1=周一…7=周日
 function isRestDay(dateStr){ return settings.restDays.includes(weekdayOf(dateStr)); }
 function bucketOf(days){ // 工作日 / 休息日 / 每天 / 其他
@@ -77,9 +79,21 @@ let state = load();
 function load(){
   try {
     const s = localStorage.getItem(STORE_KEY);
-    if(s) return Object.assign(seedState(), JSON.parse(s)); // 旧数据缺 notes 时自动补默认值
+    if(s) return repairLegacy(Object.assign(seedState(), JSON.parse(s))); // 旧数据缺 notes 时自动补默认值
   } catch(e){}
   return seedState();
+}
+/* 兼容旧数据：以前新建习惯时会把 lastDone 写成"今天"（那是个 bug），于是当天新加的习惯
+   永远进不了"今天该做的"。凡是"写着今天做过、但今天并没有完成记录"的习惯，改回"从没做过"。 */
+function repairLegacy(st){
+  const today = todayStr();
+  const doneToday = new Set();
+  const d = st.days && st.days[today];
+  if(d && d.tasks) d.tasks.forEach(t => { if(t.done && t.backlogId) doneToday.add(t.backlogId); });
+  (st.backlog || []).forEach(b => {
+    if(b.type === "habit" && b.lastDone === today && !doneToday.has(b.id)) b.lastDone = null;
+  });
+  return st;
 }
 function save(){ localStorage.setItem(STORE_KEY, JSON.stringify(state)); }
 function dayData(){
@@ -96,7 +110,8 @@ function autoGenHabits(){
   let changed = false;
   state.backlog.forEach(b => {
     if(b.type !== "habit") return;
-    const gap = b.lastDone ? daysSince(b.lastDone) : Infinity; // 从没做过 = 立即到期
+    if(!b.lastDone) return;                                      // 从没做过的：等你手动导入/安排，不自动塞
+    const gap = daysSince(b.lastDone);
     if(gap < (b.interval || 1)) return;                          // 还没到该做的日子
     if(d.skipped.includes(b.id)) return;                         // 今天手动删过，别再塞回来
     if(d.tasks.some(t => t.backlogId === b.id)) return;          // 已经列在今日计划里了
@@ -221,15 +236,18 @@ function renderTasks(){
   const d = dayData();
   const el = $("taskList");
   if(!d.tasks.length){ el.innerHTML = '<div class="empty">还没安排任务，点"＋ 安排任务"。</div>'; return; }
+  const dupCount = {}; // 同一事项今天导入了多次时标出来，免得看着像 bug
+  d.tasks.forEach(t => { if(t.backlogId) dupCount[t.backlogId] = (dupCount[t.backlogId]||0) + 1; });
   el.innerHTML = d.tasks.map((t,i)=>{
     const tag = t.kind === "habit"
       ? '<span class="t-tag">日常</span>'
       : '<span class="t-tag t-tag-tmp">临时</span>';
+    const dup = (t.backlogId && dupCount[t.backlogId] > 1) ? `<span class="t-dup">×${dupCount[t.backlogId]}</span>` : "";
     return `
     <div class="task ${t.done?'done':''}">
       <div class="cb" data-check="${i}">${t.done?'✓':''}</div>
       <div class="t-body">
-        <div class="t-title">${tag}${esc(t.title)}</div>
+        <div class="t-title">${tag}${esc(t.title)}${dup}</div>
         <div class="t-meta">${fmtDur(t.min)}${(t.start&&t.end)?`<span class="t-time">${t.start}–${t.end}</span>`:""}</div>
       </div>
       <span class="t-del" data-del-task="${i}">✕</span>
@@ -243,7 +261,7 @@ function renderBacklog(){
   el.innerHTML = state.backlog.map((b,i)=>{
     let meta = "";
     if(b.type==="deadline"){ const dd=daysUntil(b.deadline); meta = `截止 ${b.deadline} · 剩 ${dd} 天`; }
-    else { meta = `习惯 · ${daysSince(b.lastDone)} 天没做`; }
+    else { meta = b.lastDone ? `习惯 · ${daysSince(b.lastDone)} 天没做` : "习惯 · 还没开始"; }
     const must = !!b.must;
     return `<div class="blk" draggable="true" data-idx="${i}">
       <span class="grip" title="拖动排序">⠿</span>
@@ -345,15 +363,19 @@ function suggest(){
           `${b.unit||"截止"} 还有 ${dd} 天，一天一点点就够`,
         ]);
       } else if(b.type === "habit"){
-        const gap = daysSince(b.lastDone);
+        const gap = habitGap(b);
         const due = b.interval || 1;
         if(gap >= due){
-          dyn = (gap - due + 1) * 10; // 到期后每多欠一天 +10
-          reason = pick([
+          dyn = isFinite(gap) ? (gap - due + 1) * 10 : 20; // 到期后每多欠一天 +10；从没做过的给一点紧迫度
+          reason = isFinite(gap) ? pick([
             `「${b.name}」断了 ${gap} 天，今天做一点就接上了`,
             `「${b.name}」歇了 ${gap} 天，没关系，今天补一小份就回来`,
             `「${b.name}」空窗 ${gap} 天了，现在接回来刚刚好`,
             `「${b.name}」有 ${gap} 天没碰，今天先做 5 分钟，别让它继续断`,
+          ]) : pick([
+            `「${b.name}」还没开始，今天开个头`,
+            `「${b.name}」一直没动过，先做 5 分钟试试`,
+            `「${b.name}」是你新加进来的，今天就动一下`,
           ]);
         } else {
           dyn = -1000; // 还没到点 / 今天做过了：压到末尾
@@ -507,11 +529,12 @@ function renderWeek(){
       if(b.type==="deadline" && b.deadline && b.deadline === ds){
         items.push(`<span class="wk-deadline">${esc(b.name)} 截止</span>`);
       } else if(b.type==="habit"){
-        const gap = daysSince(b.lastDone);
+        const gap = habitGap(b);
         const interval = b.interval || 1;
         const dueOffset = gap >= interval ? 0 : interval - gap; // 已逾期就归到今天，否则算还差几天
         if(dueOffset === i){
-          items.push(`<span class="wk-habit">${esc(b.name)} ${gap >= interval ? "逾期" + gap + "天" : "该做了"}</span>`);
+          const txt = !isFinite(gap) ? "还没开始" : (gap >= interval ? "逾期" + gap + "天" : "该做了");
+          items.push(`<span class="wk-habit">${esc(b.name)} ${txt}</span>`);
         }
       }
     }
@@ -660,7 +683,8 @@ $("mBacklogOk").addEventListener("click", ()=>{
       min: parseInt($("bMin").value,10)||20,
       energy: $("bEnergy").value, scene: $("bScene").value,
       type: $("bType").value, deadline: $("bType").value==="deadline" ? ($("bDeadline").value || null) : null,
-      interval: parseInt($("bInterval").value,10) || 2, lastDone: todayStr(),
+      interval: parseInt($("bInterval").value,10) || 2,
+      lastDone: null, // 新建 = 从没做过（不是"今天做过了"，否则当天永远进不了"今天该做的"）
     });
     save(); render();
     resetBacklogForm(); // 写入后清空表单
@@ -673,42 +697,69 @@ function dueItems(){
   const today = todayStr();
   return state.backlog.filter(b => {
     if(b.type === "deadline" && b.deadline) return b.deadline <= today;
-    if(b.type === "habit"){ const gap = b.lastDone ? daysSince(b.lastDone) : Infinity; return gap >= (b.interval||1); }
+    if(b.type === "habit") return habitGap(b) >= (b.interval||1);
     return false;
   });
 }
-function importTasks(items){
+function countInPlan(backlogId){ // 该事项今天已经列了几条（>0 说明重复导入过）
+  return dayData().tasks.filter(t => t.backlogId === backlogId).length;
+}
+/* 一键导入 = 增量补新：只把"今天计划里还没有的"拉进来，已经排过的不再重复。
+   只有勾选弹窗会传 allowDup（你亲手勾上 = 显式要求再做一次）。
+   空闲时间段排不下时也照样进今日计划，只是不占时间段（跟"＋ 安排任务"手动加的一样）。
+   不读 d.skipped：自动生成不跟你抢，手动导入永远算数。 */
+function importTasks(items, opts){
+  if(!items.length) return;
+  const allowDup = !!(opts && opts.allowDup);
   const d = dayData();
-  const placed = [], failed = [];
+  const scheduled = [], unscheduled = [], skipped = [];
   for(const b of items){
-    if(d.tasks.some(t => t.backlogId === b.id)) continue;              // 已经列了
-    if(b.type === "habit" && d.skipped.includes(b.id)) continue;        // 今天手动删过
+    if(!allowDup && countInPlan(b.id) > 0){ skipped.push(b.name); continue; } // 今天已经有了，只补新的
     const min = b.min || 20;
+    const kind = b.type === "habit" ? "habit" : undefined;
     const slot = freeSlots().find(s => fragMin(s) >= min);
-    if(!slot){ failed.push(b.name); continue; }
-    const start = slot.start, end = addMin(start, min);
-    d.tasks.push({ id:uid(), backlogId:b.id, title:b.name, min, start, end, done:false, kind: b.type==="habit" ? "habit" : undefined });
-    placed.push(`${b.name} ${start}–${end}`);
+    if(slot){
+      const start = slot.start, end = addMin(start, min);
+      d.tasks.push({ id:uid(), backlogId:b.id, title:b.name, min, start, end, done:false, kind });
+      scheduled.push({ name:b.name, at:`${start}–${end}` });
+    } else {
+      d.tasks.push({ id:uid(), backlogId:b.id, title:b.name, min, done:false, kind });
+      unscheduled.push(b.name);
+    }
   }
   lastSugg = null;
   save(); render();
-  if(placed.length) toast("已导入并排好：" + placed.join("、"));
-  else if(failed.length) toast("没排下：" + failed.join("、") + "（空闲不够，先「从作息生成」）");
-  else toast("都已排进今日计划，没有新的要导入了");
+  const added = scheduled.length + unscheduled.length;
+  if(!added){ toast(`这 ${skipped.length} 条今天都已经在计划里了，没有新的要导入`); return; }
+  const parts = [];
+  if(scheduled.length) parts.push(scheduled.map(x => `${x.name} ${x.at}`).join("、"));
+  if(unscheduled.length) parts.push(`${unscheduled.join("、")}（待排时间）`);
+  const tail = skipped.length ? `；另有 ${skipped.length} 条今天已有，跳过` : "";
+  toast(`已导入 ${added} 条：${parts.join("；")}${tail}`);
 }
 function doImport(mode){
   const items = mode === "all" ? state.backlog.slice() : dueItems();
-  if(!items.length){ toast(mode === "all" ? "事项池是空的，先去添加几个事项" : "今天没有到期的事项"); return; }
+  if(!items.length){
+    toast(mode === "all"
+      ? "事项池是空的，先去添加几个事项"
+      : "今天没有到期的：截止型还没到日子，可用「全部事项」或「弹窗勾选」");
+    return;
+  }
   importTasks(items);
 }
 function openImportPick(){
   const dueIds = new Set(dueItems().map(x=>x.id));
-  $("importPickList").innerHTML = state.backlog.map(b => `
+  $("importPickList").innerHTML = state.backlog.map(b => {
+    const n = countInPlan(b.id);
+    const meta = (b.type === "deadline" ? "截止 " + (b.deadline||"") : "习惯") + ` · ${b.min}分钟`;
+    // 今天已经排过的默认不勾（想再导一次就自己勾上），避免一不留神导出一堆重复
+    return `
     <label class="ip-item">
-      <input type="checkbox" value="${b.id}" ${dueIds.has(b.id) ? "checked" : ""}>
-      <span>${esc(b.name)}</span>
-      <em>${b.type==="deadline" ? "截止 " + (b.deadline||"") : "习惯"} · ${b.min}分钟</em>
-    </label>`).join("");
+      <input type="checkbox" value="${b.id}" ${(!n && dueIds.has(b.id)) ? "checked" : ""}>
+      <span>${esc(b.name)}${n ? `<i class="ip-dup">今日已排 ${n} 条 · 再勾会新增 1 条</i>` : ""}</span>
+      <em>${meta}</em>
+    </label>`;
+  }).join("");
   openModal("mImportPick");
 }
 $("importTasks").addEventListener("click", ()=>{
@@ -727,7 +778,8 @@ $("mImportPickOk").addEventListener("click", ()=>{
   const ids = [...document.querySelectorAll("#importPickList input:checked")].map(x=>x.value);
   const items = state.backlog.filter(b => ids.includes(b.id));
   closeModal("mImportPick");
-  if(items.length) importTasks(items);
+  // 这里是你亲手勾的，已排过的也照加（"真重复"只有这一条路走得通）
+  if(items.length) importTasks(items, { allowDup: true });
   else toast("没勾选任何事项");
 });
 
@@ -930,8 +982,8 @@ function maybeRemind(){
   const d = state.days[todayStr()];
   // 找"逾期且今天还没做"的习惯，断得最久的排前面，只弹它一条接回文案
   const overdue = state.backlog
-    .filter(b => b.type === "habit")
-    .map(b => ({ b, gap: b.lastDone ? daysSince(b.lastDone) : Infinity }))
+    .filter(b => b.type === "habit" && b.lastDone) // 从没开始过的不催：它还没进过今日计划，催了也没用
+    .map(b => ({ b, gap: habitGap(b) }))
     .filter(x => x.gap >= (x.b.interval || 1))
     .filter(x => !(d && d.tasks.some(t => t.backlogId === x.b.id && t.done)))
     .sort((a,b) => b.gap - a.gap);
