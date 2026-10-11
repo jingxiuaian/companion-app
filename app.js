@@ -415,7 +415,7 @@ const REST_TIERS = [
   { max: 25, items: [
     { t:"泡杯茶坐着发会儿呆", scene:"室内", energy:"低" },
     { t:"冲个热水澡，把今天的劲儿卸下来", scene:"室内", energy:"中" },
-    { t:"下楼走两圈，晒晒太阳", scene:"室外", energy:"中" },
+    { t:"下楼走两圈，透透气", scene:"室外", energy:"中" },
     { t:"把桌面收一小块，看着舒服点", scene:"室内", energy:"中" },
   ]},
   { max: 45, items: [
@@ -431,7 +431,7 @@ const REST_TIERS = [
   { max: 120, items: [
     { t:"看一部电影，中间不刷手机那种", scene:"室内", energy:"低" },
     { t:"骑车或者走远一点，去个平时不去的地方", scene:"室外", energy:"高" },
-    { t:"约个人见一面，或者给家里打个电话", scene:"不限", energy:"低" },
+    { t:"给自己做顿想吃的，不赶时间", scene:"室内", energy:"中" },
   ]},
   { max: Infinity, items: [
     { t:"这么长的一段时间，够做一件你一直想排、却一直没排上的事", scene:"不限", energy:"中" },
