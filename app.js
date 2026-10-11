@@ -17,6 +17,9 @@ const MIN_FRAG = 10;         // 小于 10 分钟的碎片忽略
 const DAY_NAMES = ["一","二","三","四","五","六","日"];
 
 function pad(n){ return String(n).padStart(2, "0"); }
+function hhmmToMin(s){ const [h,m] = s.split(":").map(Number); return h*60 + m; }
+function minToHHMM(n){ return pad(Math.floor(n/60) % 24) + ":" + pad(n % 60); }
+function nowMin(){ const d = new Date(); return d.getHours()*60 + d.getMinutes(); } // 现在几点（分钟数）
 function daysUntil(deadline){ return Math.round((new Date(deadline+"T00:00:00") - new Date(todayStr()+"T00:00:00")) / MS_DAY); }
 function daysSince(lastDone){ return Math.round((new Date(todayStr()+"T00:00:00") - new Date(lastDone+"T00:00:00")) / MS_DAY); }
 /* 习惯"欠了多久"：从没做过 = Infinity（一直欠着）。新建条目就是这种状态，不是"今天做过了"。 */
@@ -28,9 +31,23 @@ function habitGap(b){ return b.lastDone ? daysSince(b.lastDone) : Infinity; }
    做得比预计久就如实扣减，不假装没发生。 */
 function spentMin(t){ return t.done ? (t.actual == null ? t.min : Math.max(0, t.actual)) : t.min; }
 function usedMin(d){ return d.tasks.reduce((s,t) => s + spentMin(t), 0); }
+/* 从现在到熄灯，还剩多少空闲（已过去的那部分不算） */
+function futureFreeMin(d){
+  const now = nowMin(), dayEnd = hhmmToMin(DAY_END);
+  let future = 0;
+  for(const f of d.fragments){
+    const s = Math.max(hhmmToMin(f.start), now);
+    const e = Math.min(hhmmToMin(f.end), dayEnd);
+    if(e > s) future += e - s;
+  }
+  return future;
+}
+/* 可支配 = 今天累积还没用掉的时间，但不能超过"从现在到熄灯"还剩的空闲。
+   前半句保留了"提前完成省下的时间会回到可支配"（已完成按实际耗时算）；
+   后半句保证晚上做完不会自称还有一上午可支配。 */
 function freeMinOf(d){
-  const total = d.fragments.reduce((s,f) => s + fragMin(f), 0);
-  return Math.max(0, total - usedMin(d));
+  const accum = d.fragments.reduce((s,f) => s + fragMin(f), 0) - usedMin(d);
+  return Math.max(0, Math.min(accum, futureFreeMin(d)));
 }
 /* 已完成的任务只占到"实际耗时"为止，省下的那截时间要能被新任务用上 */
 function effEnd(t){
@@ -46,7 +63,7 @@ function bucketOf(days){ // 工作日 / 休息日 / 每天 / 其他
   if(days.length && days.every(d => !rest.includes(d))) return "work";
   return "mixed";
 }
-function fragMin(f){ const [sh,sm]=f.start.split(":").map(Number), [eh,em]=f.end.split(":").map(Number); return (eh*60+em)-(sh*60+sm); }
+function fragMin(f){ return hhmmToMin(f.end) - hhmmToMin(f.start); }
 function fmtDur(min){ const h=Math.floor(min/60), m=min%60; return h>0 ? (m>0? h+"h"+m+"m" : h+"h") : m+"m"; }
 function daysLabel(days){
   if(!days || !days.length) return "";
@@ -56,11 +73,7 @@ function daysLabel(days){
   if(eq(days, wd)) return "工作日";
   return days.map(d=>"周"+DAY_NAMES[d-1]).join("、");
 }
-function addMin(timeStr, m){
-  const [h,mm] = timeStr.split(":").map(Number);
-  const total = h*60 + mm + m;
-  return pad(Math.floor(total/60)%24) + ":" + pad(total%60);
-}
+function addMin(timeStr, m){ return minToHHMM(hhmmToMin(timeStr) + m); }
 function addDaysStr(dateStr, n){
   const d = new Date(dateStr+"T00:00:00");
   d.setDate(d.getDate()+n);
@@ -549,11 +562,13 @@ function energyAllow(user, need){
 function freeSlots(){
   const d = dayData();
   const slots = [];
+  const now = nowMin();
   for(const f of d.fragments){
+    if(hhmmToMin(f.end) <= now) continue; // 这一段已经过去了，排不进去
     const inner = d.tasks
       .filter(t => t.start && t.end && t.start >= f.start && t.end <= f.end)
       .sort((a,b)=> a.start.localeCompare(b.start));
-    let cursor = f.start;
+    let cursor = hhmmToMin(f.start) < now ? minToHHMM(now) : f.start; // 只排此刻之后的空档
     for(const t of inner){
       if(t.start > cursor) slots.push({start:cursor, end:t.start});
       const end = effEnd(t); // 已完成的任务只占到实际耗时为止，省下的尾巴让出来给新任务
