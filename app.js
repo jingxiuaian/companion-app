@@ -21,6 +21,22 @@ function daysUntil(deadline){ return Math.round((new Date(deadline+"T00:00:00") 
 function daysSince(lastDone){ return Math.round((new Date(todayStr()+"T00:00:00") - new Date(lastDone+"T00:00:00")) / MS_DAY); }
 /* 习惯"欠了多久"：从没做过 = Infinity（一直欠着）。新建条目就是这种状态，不是"今天做过了"。 */
 function habitGap(b){ return b.lastDone ? daysSince(b.lastDone) : Infinity; }
+
+/* ---------- 时长账：完成任务不等于"这段时间还给你" ----------
+   已完成 → 按上报的实际耗时算（没上报就按预计算）；未完成 → 按预计时长占着。
+   于是"读书一小时"实际做了 60 分钟 = 盈余 0；"背 30 个单词"预计 30 实际 20 = 盈余 10 分钟。
+   做得比预计久就如实扣减，不假装没发生。 */
+function spentMin(t){ return t.done ? (t.actual == null ? t.min : Math.max(0, t.actual)) : t.min; }
+function usedMin(d){ return d.tasks.reduce((s,t) => s + spentMin(t), 0); }
+function freeMinOf(d){
+  const total = d.fragments.reduce((s,f) => s + fragMin(f), 0);
+  return Math.max(0, total - usedMin(d));
+}
+/* 已完成的任务只占到"实际耗时"为止，省下的那截时间要能被新任务用上 */
+function effEnd(t){
+  if(!t.done || t.actual == null || !t.start) return t.end;
+  return addMin(t.start, Math.max(0, t.actual));
+}
 function weekdayOf(dateStr){ const d = new Date(dateStr+"T00:00:00").getDay(); return d === 0 ? 7 : d; } // 1=周一…7=周日
 function isRestDay(dateStr){ return settings.restDays.includes(weekdayOf(dateStr)); }
 function bucketOf(days){ // 工作日 / 休息日 / 每天 / 其他
@@ -197,9 +213,9 @@ function render(){
 function renderOverview(){
   const d = dayData();
   const totalMin = d.fragments.reduce((s,f)=>s+fragMin(f),0);
-  const plannedMin = d.tasks.reduce((s,t)=>s+t.min,0);
+  const plannedMin = d.tasks.reduce((s,t)=>s+t.min,0); // 只用来画"排布密度"进度条
   const doneCount = d.tasks.filter(t=>t.done).length;
-  const freeMin = Math.max(0, totalMin - plannedMin);
+  const freeMin = freeMinOf(d);                        // 可支配：已完成按实际耗时算，提前完成才会变多
   $("ovTitle").textContent = state.date === todayStr() ? "今天" : state.date;
   $("ovRest").style.display = isRestDay(state.date) ? "" : "none";
   $("ovFree").textContent = fmtDur(freeMin);
@@ -216,8 +232,8 @@ function renderFrags(){
       .filter(t => t.start && t.end && t.start >= f.start && t.end <= f.end)
       .sort((a,b)=> a.start.localeCompare(b.start));
     const tasksHtml = inner.map(t=>`
-      <div class="frag-task">
-        <span class="ft-time">${t.start}–${t.end}</span>
+      <div class="frag-task ${t.done?'done':''}">
+        <span class="ft-time">${t.start}–${effEnd(t)}</span>
         <span class="ft-name">${esc(t.title)}</span>
       </div>`).join("");
     return `
@@ -243,12 +259,21 @@ function renderTasks(){
       ? '<span class="t-tag">日常</span>'
       : '<span class="t-tag t-tag-tmp">临时</span>';
     const dup = (t.backlogId && dupCount[t.backlogId] > 1) ? `<span class="t-dup">×${dupCount[t.backlogId]}</span>` : "";
+    // 已完成：显示实际耗时（可点开改）和实际占用的时间段，让"省下的那截时间"看得见
+    const spent = t.done
+      ? (t.actual == null
+          ? `<span class="t-spent" data-actual="${i}" title="点这里补上报实际耗时">${fmtDur(t.min)}（按预计）</span>`
+          : `<span class="t-spent" data-actual="${i}" title="点这里改实际耗时">实际 ${fmtDur(t.actual)}${t.actual !== t.min ? `（预计 ${fmtDur(t.min)}）` : ""}</span>`)
+      : `<span>${fmtDur(t.min)}</span>`;
+    const range = (t.start && t.end)
+      ? `<span class="t-time">${t.start}–${t.done ? effEnd(t) : t.end}</span>`
+      : "";
     return `
     <div class="task ${t.done?'done':''}">
       <div class="cb" data-check="${i}">${t.done?'✓':''}</div>
       <div class="t-body">
         <div class="t-title">${tag}${esc(t.title)}${dup}</div>
-        <div class="t-meta">${fmtDur(t.min)}${(t.start&&t.end)?`<span class="t-time">${t.start}–${t.end}</span>`:""}</div>
+        <div class="t-meta">${spent}${range}</div>
       </div>
       <span class="t-del" data-del-task="${i}">✕</span>
     </div>`;
@@ -312,7 +337,7 @@ function renderSchedule(){
 function renderSuggList(){
   const el = $("suggList");
   if(!lastSugg){ el.innerHTML = ""; return; }
-  if(lastSugg.empty){ el.innerHTML = '<div class="empty" style="padding-top:14px">暂时没有合适的事项——去事项池添加，或把时间调长一点试试。</div>'; return; }
+  if(lastSugg.empty){ el.innerHTML = `<div class="empty" style="padding-top:14px">${esc(lastSugg.note || "暂时没有合适的事项。")}</div>`; return; }
   if(!lastSugg.singles.length && !lastSugg.combos.length){ el.innerHTML = ""; return; }
   let html = "";
   if(isRestDay(state.date)) html += `<div class="rest-note">今天是休息日，时间宽裕，挑一件想做的慢慢做就好。</div>`;
@@ -341,13 +366,15 @@ function renderSuggList(){
 function pick(arr){ return arr[Math.floor(Math.random()*arr.length)]; }
 function suggest(){
   const d = dayData();
-  const totalMin = d.fragments.reduce((s,f)=>s+fragMin(f),0);
-  const plannedMin = d.tasks.reduce((s,t)=>s+t.min,0);
-  const baseFree = Math.max(0, totalMin - plannedMin);
+  const baseFree = freeMinOf(d); // 已完成按实际耗时算：提前完成省下的时间会体现在这里
   const extra = parseInt($("extraMin").value,10) || 0;
   const remaining = baseFree + extra;
 
-  const cands = state.backlog
+  // 候选 = 事项池里"今天还没排进计划、也还没做过"的。已经排了 / 做过的再推一遍就是废话。
+  const today = todayStr();
+  const inPlan = new Set(d.tasks.map(t => t.backlogId).filter(Boolean));
+  const poolLeft = state.backlog.filter(b => !inPlan.has(b.id) && b.lastDone !== today);
+  const cands = poolLeft
     .filter(b => b.min <= remaining)
     .filter(b => scene === "可外出" || b.scene !== "室外")
     .filter(b => energyAllow(energy, b.energy))
@@ -395,7 +422,7 @@ function suggest(){
       const over = remaining - b.min;
       const fit = over <= 15 ? 1.5 : (over <= 45 ? 0.8 : 0.2);
       const pri = state.backlog.length - state.backlog.indexOf(b); // 位置越靠前优先级越高
-      const score = pri * 100 + dyn + fit; // pri 降权，紧迫度才能生效
+      const score = pri * 10 + dyn + fit; // pri 只做轻微影响，让"越紧急 / 越该做"真正主导
       const fitTag = over <= 15 ? "刚刚好" : (over <= 45 ? "合适" : "时间有余");
       return { item:b, score, reason, fit:fitTag };
     })
@@ -417,7 +444,23 @@ function suggest(){
   combos.sort((a,b)=> b.score - a.score);
   const topCombos = combos.slice(0,2);
 
-  lastSugg = { remaining, singles, combos: topCombos, empty: cands.length === 0 };
+  // 空的时候要说清楚"为什么没有"，而不是笼统一句"没有合适的事项"
+  let note = "";
+  if(!cands.length){
+    if(!state.backlog.length){
+      note = "事项池还是空的——先去「事项池」页添加几件想做的事。";
+    } else if(!poolLeft.length){
+      note = (d.tasks.length && d.tasks.every(t => t.done))
+        ? "今天的计划全部完成了，事项池里的事项今天也都安排过——加一件新的，或者就好好歇着。"
+        : "事项池里的事项今天都已经排进计划了，去今日计划里把它们做掉吧。";
+    } else {
+      const shortest = Math.min.apply(null, poolLeft.map(b => b.min));
+      note = (shortest > remaining)
+        ? `当前可支配 ${fmtDur(remaining)}，还有 ${poolLeft.length} 件没安排，但最短的一件也要 ${fmtDur(shortest)}。`
+        : "剩下这几件在当下的精力 / 环境下都不合适——换个精力档位，或者去室外试试。";
+    }
+  }
+  lastSugg = { remaining, singles, combos: topCombos, empty: cands.length === 0, note };
   renderSuggList();
 }
 
@@ -437,7 +480,8 @@ function freeSlots(){
     let cursor = f.start;
     for(const t of inner){
       if(t.start > cursor) slots.push({start:cursor, end:t.start});
-      if(t.end > cursor) cursor = t.end;
+      const end = effEnd(t); // 已完成的任务只占到实际耗时为止，省下的尾巴让出来给新任务
+      if(end > cursor) cursor = end;
     }
     if(f.end > cursor) slots.push({start:cursor, end:f.end});
   }
@@ -844,18 +888,15 @@ document.addEventListener("click", e=>{
   if(nd){ state.notes.splice(+nd.dataset.noteDel,1); save(); render(); return; }
   const nc = e.target.closest("[data-note-check]");
   if(nc){ state.notes[+nc.dataset.noteCheck].done = !state.notes[+nc.dataset.noteCheck].done; save(); render(); return; }
+  const ac = e.target.closest("[data-actual]");
+  if(ac){ openActual(+ac.dataset.actual); return; }
   const ck = e.target.closest("[data-check]");
   if(ck){
-    const t = dayData().tasks[+ck.dataset.check];
-    t.done = !t.done;
-    if(t.done){
-      if(t.backlogId){
-        const b = state.backlog.find(x => x.id === t.backlogId);
-        if(b) b.lastDone = todayStr();
-      }
-      cheerOnCheck(); // 按设置里的频率弹鼓励
-    }
-    save(); render(); return;
+    const i = +ck.dataset.check;
+    const t = dayData().tasks[i];
+    if(t.done){ t.done = false; save(); render(); return; } // 取消打卡：直接还原，不必再问耗时
+    openActual(i);                                          // 完成打卡：先上报实际耗时
+    return;
   }
 });
 
@@ -889,6 +930,60 @@ $("noteInput").addEventListener("keydown", e=>{
 });
 $("btnSuggest").addEventListener("click", suggest);
 
+/* ---------- 完成打卡：强制上报实际耗时（否则算不出提前省下的时间） ---------- */
+let actualIdx = null;
+function openActual(i){
+  const t = dayData().tasks[i];
+  if(!t) return;
+  actualIdx = i;
+  const edit = !!t.done; // 已完成 = 只是回来改数字，不改打卡状态
+  $("aTitle").textContent = (edit ? "修改实际耗时" : "完成打卡") + "：「" + t.title + "」";
+  $("aHint").textContent = `预计 ${fmtDur(t.min)}。填上实际花了多久，才算得出"提前省下多少时间"。`;
+  $("aQuick").textContent = "就按预计 " + fmtDur(t.min);
+  const inp = $("aMin");
+  inp.value = (edit && t.actual != null) ? t.actual : "";
+  inp.placeholder = "预计 " + fmtDur(t.min);
+  syncActualOk();
+  openModal("mActual");
+  inp.focus();
+}
+function syncActualOk(){ // 没填数字就不给点「完成打卡」
+  const v = String($("aMin").value).trim();
+  const n = v === "" ? NaN : Number(v);
+  $("mActualOk").disabled = !(Number.isFinite(n) && n >= 0);
+}
+function fillActualEstimate(){ // 「就按预计」一键填入
+  const t = dayData().tasks[actualIdx]; if(!t) return;
+  $("aMin").value = t.min; syncActualOk(); $("aMin").focus();
+}
+function commitActual(){
+  const t = dayData().tasks[actualIdx];
+  const raw = String($("aMin").value).trim();
+  const n = raw === "" ? NaN : Math.round(Number(raw)); // 空值不能当 0：否则"没填"会被记成"零分钟做完"，白送一整段盈余
+  if(!t || !Number.isFinite(n) || n < 0) return;
+  const firstTime = !t.done;
+  t.actual = n;
+  if(firstTime){
+    t.done = true;
+    if(t.backlogId){
+      const b = state.backlog.find(x => x.id === t.backlogId);
+      if(b) b.lastDone = todayStr();
+    }
+  }
+  closeModal("mActual");
+  save(); render();
+  const saved = t.min - n;
+  const note = saved > 0 ? `省下 ${fmtDur(saved)}，已回到可支配时间`
+             : saved < 0 ? `比预计多用了 ${fmtDur(-saved)}`
+             : "正好用满预计时间";
+  if(firstTime) cheerOnCheck(note); // 按设置里的频率弹鼓励，顺带报耗时结果
+  else toast("已更新实际耗时 · " + note);
+}
+$("aMin").addEventListener("input", syncActualOk);
+$("aQuick").addEventListener("click", fillActualEstimate);
+$("mActualCancel").addEventListener("click", ()=> closeModal("mActual"));
+$("mActualOk").addEventListener("click", commitActual);
+
 document.querySelectorAll(".modal-mask").forEach(m=>{
   m.addEventListener("click", e=>{ if(e.target===m) m.classList.remove("on"); });
 });
@@ -915,16 +1010,19 @@ const CHEER_DONE = [
   "今天这一页翻过去了，干得漂亮",
 ];
 function milestoneCheer(n){ return pick(CHEER_MILESTONE).replace(/\{n\}/g, n); }
-function cheerOnCheck(){
+function cheerOnCheck(extra){
+  const tail = extra ? " · " + extra : "";
   const d = dayData();
   const doneCount = d.tasks.filter(t => t.done).length;
   const total = d.tasks.length;
   if(settings.cheerDone && total > 0 && doneCount >= total){
-    toast(pick(CHEER_DONE));
+    toast(pick(CHEER_DONE) + tail);
   } else if(settings.cheerMilestone > 0 && doneCount === settings.cheerMilestone){
-    toast(milestoneCheer(settings.cheerMilestone));
+    toast(milestoneCheer(settings.cheerMilestone) + tail);
   } else if(settings.cheerEvery){
-    toast(pick(CHEER));
+    toast(pick(CHEER) + tail);
+  } else if(extra){
+    toast(extra); // 鼓励全关掉时，至少把耗时结果告诉用户
   }
 }
 let toastTimer;

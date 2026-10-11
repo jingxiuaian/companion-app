@@ -207,6 +207,7 @@ header.top {
 .modal .actions { display: flex; gap: 10px; margin-top: 6px; }
 .modal .actions button { flex: 1; font: inherit; font-weight: 600; padding: 11px; border-radius: 11px; cursor: pointer; border: 1px solid var(--line); background: var(--card); color: var(--ink); }
 .modal .actions button.primary { background: var(--brand); color: #fff; border-color: var(--brand); }
+.modal .actions button.primary:disabled { opacity: .4; cursor: not-allowed; }
 
 /* 设置面板 */
 .set-group { padding: 4px 0 14px; border-bottom: 1px solid var(--line); }
@@ -265,6 +266,7 @@ header.top {
 /* 碎片里已排的任务 */
 .frag-task { display: flex; align-items: center; gap: 8px; font-size: 12.5px; padding: 3px 4px 9px; }
 .frag-task .ft-time { font-variant-numeric: tabular-nums; color: var(--brand); font-weight: 600; }
+.frag-task.done .ft-name { color: var(--sub); text-decoration: line-through; }
 .frag-task .ft-name { color: var(--ink); }
 
 /* 任务时间 chip */
@@ -351,3 +353,9 @@ header.top {
 .ip-item em { font-size: 11.5px; color: var(--sub); font-style: normal; white-space: nowrap; }
 /* 今天已经排过的条数提示：再勾一次会新增一条 */
 .ip-item .ip-dup { display: block; font-size: 11px; font-weight: 600; color: var(--brand); font-style: normal; margin-top: 2px; }
+
+/* 完成打卡弹窗：一键按预计 */
+.a-quick { text-align: right; margin: -2px 0 10px; }
+/* 已完成任务的实际耗时：可点开修改 */
+.task .t-spent { cursor: pointer; border-bottom: 1px dashed var(--line); }
+.task.done .t-spent { color: var(--brand); border-bottom-color: var(--brand-soft); }

@@ -181,6 +181,20 @@
   </div>
 </div>
 
+<!-- 弹窗：完成打卡（强制上报实际耗时，否则算不出提前省下的时间） -->
+<div class="modal-mask" id="mActual">
+  <div class="modal">
+    <h3 id="aTitle">完成打卡</h3>
+    <p class="hint" id="aHint" style="font-size:12.5px;color:var(--sub);margin-bottom:10px"></p>
+    <div class="field">
+      <label>实际耗时（分钟）</label>
+      <input type="number" id="aMin" min="0" step="1" placeholder="这件事你实际花了多久">
+    </div>
+    <div class="a-quick"><button class="link" id="aQuick">就按预计</button></div>
+    <div class="actions"><button id="mActualCancel">取消</button><button class="primary" id="mActualOk" disabled>完成打卡</button></div>
+  </div>
+</div>
+
 <!-- 弹窗：添加事项 -->
 <div class="modal-mask" id="mBacklog">
   <div class="modal">
