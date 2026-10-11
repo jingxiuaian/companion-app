@@ -373,8 +373,8 @@ function restBlock(rest){
   const line = !rest.items.length
     ? "时间刚好用满"
     : (rest.earned > 0
-        ? `今天提前省下 ${fmtDur(rest.earned)}，现在空出 <b>${fmtDur(rest.remaining)}</b>`
-        : `现在空出 <b>${fmtDur(rest.remaining)}</b>`);
+        ? `今天提前省下 ${fmtDur(rest.earned)}，今天的空闲还剩 <b>${fmtDur(rest.remaining)}</b>`
+        : `今天的空闲还剩 <b>${fmtDur(rest.remaining)}</b>`);
   const items = rest.items.length
     ? rest.items.map(t => `<div class="rest-item">${esc(t)}</div>`).join("")
     : `<div class="rest-item rest-none">没什么要往里塞的了，今天到此为止。</div>`;
@@ -421,8 +421,9 @@ const REST_TIERS = [
     { t:"约个人见一面，或者给家里打个电话", scene:"不限", energy:"低" },
   ]},
   { max: Infinity, items: [
-    { t:"这么长的时间，够做一件你一直想排、却一直没排上的事", scene:"不限", energy:"中" },
-    { t:"也够什么都不干，今天该做的都做完了，剩下的归你", scene:"不限", energy:"低" },
+    { t:"这么长的一段时间，够做一件你一直想排、却一直没排上的事", scene:"不限", energy:"中" },
+    { t:"去个平时总说「下次去」的地方，公园、展、书店都行", scene:"室外", energy:"中" },
+    { t:"今天该做的都做完了，剩下的时间全归你，想休息就休息", scene:"不限", energy:"低" },
   ]},
 ];
 function restIdeas(remaining){
