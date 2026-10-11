@@ -20,6 +20,14 @@ function pad(n){ return String(n).padStart(2, "0"); }
 function daysUntil(deadline){ return Math.round((new Date(deadline+"T00:00:00") - new Date(todayStr()+"T00:00:00")) / MS_DAY); }
 function daysSince(lastDone){ return Math.round((new Date(todayStr()+"T00:00:00") - new Date(lastDone+"T00:00:00")) / MS_DAY); }
 function weekdayOf(dateStr){ const d = new Date(dateStr+"T00:00:00").getDay(); return d === 0 ? 7 : d; } // 1=周一…7=周日
+function isRestDay(dateStr){ return settings.restDays.includes(weekdayOf(dateStr)); }
+function bucketOf(days){ // 工作日 / 休息日 / 每天 / 其他
+  const rest = settings.restDays;
+  if(days.length === 7) return "both";
+  if(days.length && days.every(d => rest.includes(d))) return "rest";
+  if(days.length && days.every(d => !rest.includes(d))) return "work";
+  return "mixed";
+}
 function fragMin(f){ const [sh,sm]=f.start.split(":").map(Number), [eh,em]=f.end.split(":").map(Number); return (eh*60+em)-(sh*60+sm); }
 function fmtDur(min){ const h=Math.floor(min/60), m=min%60; return h>0 ? (m>0? h+"h"+m+"m" : h+"h") : m+"m"; }
 function daysLabel(days){
@@ -118,7 +126,7 @@ applyTheme(localStorage.getItem("companion-theme") || "violet");
 
 /* ---------- 设置（鼓励提醒频率 / 皮肤入口） ---------- */
 const SETTINGS_KEY = "companion-settings";
-const DEFAULT_SETTINGS = { cheerEvery: true, cheerMilestone: 0, cheerDone: true };
+const DEFAULT_SETTINGS = { cheerEvery: true, cheerMilestone: 0, cheerDone: true, restDays: [6,7], importMode: null };
 let settings = loadSettings();
 function loadSettings(){
   try {
@@ -129,6 +137,26 @@ function loadSettings(){
 }
 function saveSettings(){ localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); }
 
+/* ---------- 休息日设置 ---------- */
+function syncRestDaysUI(){
+  document.querySelectorAll("#restDays input").forEach(cb => { cb.checked = settings.restDays.includes(+cb.value); });
+  updateRestSummary();
+}
+function updateRestSummary(){
+  const arr = settings.restDays.slice().sort((a,b)=>a-b);
+  $("restSummary").textContent = arr.length ? "当前休息日：" + arr.map(d=>"周"+DAY_NAMES[d-1]).join("、") : "还没选休息日（每天都按工作日算）";
+}
+function setRestDays(days){
+  document.querySelectorAll("#restDays input").forEach(cb => { cb.checked = days.includes(+cb.value); });
+  syncRestDays();
+}
+function syncRestDays(){
+  settings.restDays = [...document.querySelectorAll("#restDays input:checked")].map(x=>+x.value);
+  saveSettings();
+  updateRestSummary();
+  render();
+}
+
 function $(id){ return document.getElementById(id); }
 function esc(s){ return String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
 function uid(){ return "id"+Math.random().toString(36).slice(2,9); }
@@ -136,6 +164,7 @@ function uid(){ return "id"+Math.random().toString(36).slice(2,9); }
 /* ---------- 渲染 ---------- */
 function render(){
   autoGenHabits();
+  syncRestDaysUI();
   $("datePicker").value = state.date;
   $("tabToday").classList.toggle("on", view==="today");
   $("tabBacklog").classList.toggle("on", view==="backlog");
@@ -157,6 +186,7 @@ function renderOverview(){
   const doneCount = d.tasks.filter(t=>t.done).length;
   const freeMin = Math.max(0, totalMin - plannedMin);
   $("ovTitle").textContent = state.date === todayStr() ? "今天" : state.date;
+  $("ovRest").style.display = isRestDay(state.date) ? "" : "none";
   $("ovFree").textContent = fmtDur(freeMin);
   $("ovDone").textContent = doneCount + "/" + d.tasks.length;
   $("ovMeter").style.width = (totalMin ? Math.min(100, plannedMin/totalMin*100) : 0) + "%";
@@ -237,7 +267,7 @@ function renderBacklog(){
 function renderSchedule(){
   const el = $("occList");
   if(!state.schedule.length){ el.innerHTML = '<div class="empty">还没有固定占用。点下方"＋ 添加占用"。</div>'; return; }
-  el.innerHTML = state.schedule.map((o,i)=>`
+  const occHtml = (o,i)=>`
     <div class="occ">
       <span class="o-days">${daysLabel(o.days)}</span>
       <div class="o-body">
@@ -245,7 +275,20 @@ function renderSchedule(){
         <div class="o-time">${o.start}–${o.end}</div>
       </div>
       <span class="del" data-del-occ="${i}">✕</span>
-    </div>`).join("");
+    </div>`;
+  const groups = [
+    { key:"work",  label:"工作日" },
+    { key:"rest",  label:"休息日" },
+    { key:"both",  label:"每天" },
+    { key:"mixed", label:"其他" },
+  ];
+  const parts = [];
+  for(const g of groups){
+    const items = state.schedule.map((o,i)=>({o,i})).filter(x => bucketOf(x.o.days) === g.key);
+    if(!items.length) continue;
+    parts.push(`<div class="occ-group-hd">${g.label}</div>` + items.map(x=>occHtml(x.o,x.i)).join(""));
+  }
+  el.innerHTML = parts.join("");
 }
 
 function renderSuggList(){
@@ -253,7 +296,9 @@ function renderSuggList(){
   if(!lastSugg){ el.innerHTML = ""; return; }
   if(lastSugg.empty){ el.innerHTML = '<div class="empty" style="padding-top:14px">暂时没有合适的事项——去事项池添加，或把时间调长一点试试。</div>'; return; }
   if(!lastSugg.singles.length && !lastSugg.combos.length){ el.innerHTML = ""; return; }
-  let html = `<div style="font-size:12px;color:var(--sub);margin-top:12px">当前可支配 <b style="color:var(--brand)">${fmtDur(lastSugg.remaining)}</b>，建议：</div>`;
+  let html = "";
+  if(isRestDay(state.date)) html += `<div class="rest-note">今天是休息日，时间宽裕，挑一件想做的慢慢做就好。</div>`;
+  html += `<div style="font-size:12px;color:var(--sub);margin-top:12px">当前可支配 <b style="color:var(--brand)">${fmtDur(lastSugg.remaining)}</b>，建议：</div>`;
   html += lastSugg.singles.map((c,i)=>`
     <div class="sugg-card">
       <div class="rank">建议 ${i+1}</div>
@@ -455,6 +500,7 @@ function renderWeek(){
   for(let i=0;i<7;i++){
     const ds = addDaysStr(today, i);
     const wd = "周" + DAY_NAMES[weekdayOf(ds)-1];
+    const rest = isRestDay(ds);
     const isToday = i===0;
     const items = [];
     for(const b of state.backlog){
@@ -472,7 +518,7 @@ function renderWeek(){
     const label = isToday ? "今天" : (i===1 ? "明天" : ds.slice(5));
     html += `
       <div class="wk-day ${isToday?'today':''}">
-        <div class="wk-hd"><div class="wk-date">${label}</div><div class="wk-wd">${wd}</div></div>
+        <div class="wk-hd"><div class="wk-date">${label}</div><div class="wk-wd">${wd}${rest ? '<span class="wk-rest">休</span>' : ''}</div></div>
         <div class="wk-body">${items.length ? items.join("") : '<span class="wk-none">—</span>'}</div>
       </div>`;
   }
@@ -520,6 +566,9 @@ function openSettings(){
   $("setCheerDone").checked = settings.cheerDone;
   const ms = settings.cheerMilestone;
   [...$("setCheerMilestone").children].forEach(x => x.classList.toggle("on", +x.dataset.v === ms));
+  const im = settings.importMode;
+  [...$("setImportMode").children].forEach(x => x.classList.toggle("on", x.dataset.v === im));
+  $("setImportModeHint").style.display = im ? "none" : "";
   renderThemeSwatches();
   openModal("mSettings");
 }
@@ -533,6 +582,12 @@ $("setCheerMilestone").addEventListener("click", e => {
   const b = e.target.closest("button"); if(!b) return;
   settings.cheerMilestone = +b.dataset.v; saveSettings();
   [...$("setCheerMilestone").children].forEach(x => x.classList.toggle("on", x === b));
+});
+$("setImportMode").addEventListener("click", e => {
+  const b = e.target.closest("button"); if(!b) return;
+  settings.importMode = b.dataset.v; saveSettings();
+  [...$("setImportMode").children].forEach(x => x.classList.toggle("on", x === b));
+  $("setImportModeHint").style.display = "none";
 });
 $("mSettings").addEventListener("click", e => {
   const b = e.target.closest("[data-set-theme]");
@@ -578,6 +633,18 @@ $("mTaskOk").addEventListener("click", ()=>{
   closeModal("mTask");
 });
 
+function resetBacklogForm(){
+  $("bName").value = "";
+  $("bDesc").value = "";
+  $("bMin").value = "20";
+  $("bEnergy").value = "高";
+  $("bScene").value = "不限";
+  $("bType").value = "habit";
+  $("bDeadline").value = "";
+  $("bInterval").value = "2";
+  $("bDeadlineWrap").style.display = "none";
+  $("bIntervalWrap").style.display = "";
+}
 $("addBacklog").addEventListener("click", ()=> openModal("mBacklog"));
 $("mBacklogCancel").addEventListener("click", ()=> closeModal("mBacklog"));
 $("bType").addEventListener("change", e=>{
@@ -596,12 +663,81 @@ $("mBacklogOk").addEventListener("click", ()=>{
       interval: parseInt($("bInterval").value,10) || 2, lastDone: todayStr(),
     });
     save(); render();
+    resetBacklogForm(); // 写入后清空表单
   }
   closeModal("mBacklog");
 });
 
+/* ---------- 一键导入事项池 ---------- */
+function dueItems(){
+  const today = todayStr();
+  return state.backlog.filter(b => {
+    if(b.type === "deadline" && b.deadline) return b.deadline <= today;
+    if(b.type === "habit"){ const gap = b.lastDone ? daysSince(b.lastDone) : Infinity; return gap >= (b.interval||1); }
+    return false;
+  });
+}
+function importTasks(items){
+  const d = dayData();
+  const placed = [], failed = [];
+  for(const b of items){
+    if(d.tasks.some(t => t.backlogId === b.id)) continue;              // 已经列了
+    if(b.type === "habit" && d.skipped.includes(b.id)) continue;        // 今天手动删过
+    const min = b.min || 20;
+    const slot = freeSlots().find(s => fragMin(s) >= min);
+    if(!slot){ failed.push(b.name); continue; }
+    const start = slot.start, end = addMin(start, min);
+    d.tasks.push({ id:uid(), backlogId:b.id, title:b.name, min, start, end, done:false, kind: b.type==="habit" ? "habit" : undefined });
+    placed.push(`${b.name} ${start}–${end}`);
+  }
+  lastSugg = null;
+  save(); render();
+  if(placed.length) toast("已导入并排好：" + placed.join("、"));
+  else if(failed.length) toast("没排下：" + failed.join("、") + "（空闲不够，先「从作息生成」）");
+  else toast("都已排进今日计划，没有新的要导入了");
+}
+function doImport(mode){
+  const items = mode === "all" ? state.backlog.slice() : dueItems();
+  if(!items.length){ toast(mode === "all" ? "事项池是空的，先去添加几个事项" : "今天没有到期的事项"); return; }
+  importTasks(items);
+}
+function openImportPick(){
+  const dueIds = new Set(dueItems().map(x=>x.id));
+  $("importPickList").innerHTML = state.backlog.map(b => `
+    <label class="ip-item">
+      <input type="checkbox" value="${b.id}" ${dueIds.has(b.id) ? "checked" : ""}>
+      <span>${esc(b.name)}</span>
+      <em>${b.type==="deadline" ? "截止 " + (b.deadline||"") : "习惯"} · ${b.min}分钟</em>
+    </label>`).join("");
+  openModal("mImportPick");
+}
+$("importTasks").addEventListener("click", ()=>{
+  if(!settings.importMode){ openModal("mImportMode"); return; }  // 首次：先选方式
+  if(settings.importMode === "pick"){ openImportPick(); return; }
+  doImport(settings.importMode);
+});
+document.querySelectorAll("#mImportMode [data-mode]").forEach(b => b.addEventListener("click", ()=>{
+  settings.importMode = b.dataset.mode; saveSettings();
+  closeModal("mImportMode");
+  if(settings.importMode === "pick") openImportPick();
+  else doImport(settings.importMode);
+}));
+$("mImportPickCancel").addEventListener("click", ()=> closeModal("mImportPick"));
+$("mImportPickOk").addEventListener("click", ()=>{
+  const ids = [...document.querySelectorAll("#importPickList input:checked")].map(x=>x.value);
+  const items = state.backlog.filter(b => ids.includes(b.id));
+  closeModal("mImportPick");
+  if(items.length) importTasks(items);
+  else toast("没勾选任何事项");
+});
+
 /* 占用 */
-$("addOcc").addEventListener("click", ()=> openModal("mOcc"));
+$("addOcc").addEventListener("click", ()=>{
+  $("oLabel").value = "";
+  const rest = settings.restDays;
+  document.querySelectorAll("#oDays input").forEach(cb => { cb.checked = !rest.includes(+cb.value); });
+  openModal("mOcc");
+});
 $("mOccCancel").addEventListener("click", ()=> closeModal("mOcc"));
 $("mOccOk").addEventListener("click", ()=>{
   const label=$("oLabel").value.trim()||"占用", start=$("oStart").value, end=$("oEnd").value;
@@ -609,6 +745,21 @@ $("mOccOk").addEventListener("click", ()=>{
   if(start && end && end > start && days.length){ state.schedule.push({days, start, end, label}); save(); render(); }
   closeModal("mOcc");
 });
+
+/* 占用弹窗：快捷填充工作日 / 休息日 / 每天 */
+document.querySelectorAll("[data-fill]").forEach(b => b.addEventListener("click", ()=>{
+  const fill = b.dataset.fill, rest = settings.restDays;
+  document.querySelectorAll("#oDays input").forEach(cb => {
+    const d = +cb.value;
+    cb.checked = fill === "all" ? true : (fill === "rest" ? rest.includes(d) : !rest.includes(d));
+  });
+}));
+
+/* 休息日设置：预设 / 手动勾选 */
+$("restPreset2").addEventListener("click", ()=> setRestDays([6,7]));
+$("restPreset1").addEventListener("click", ()=> setRestDays([7]));
+document.querySelectorAll("#restDays input").forEach(cb => cb.addEventListener("change", syncRestDays));
+
 /* 点击委托：删除 / 打卡 */
 document.addEventListener("click", e=>{
   const ss = e.target.closest("[data-sugg-single]");

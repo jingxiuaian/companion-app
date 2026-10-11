@@ -30,7 +30,10 @@
 
   <div class="overview">
     <div class="row1">
-      <h2 id="ovTitle">今日</h2>
+      <div class="ov-title">
+        <h2 id="ovTitle">今日</h2>
+        <span class="pill" id="ovRest" style="display:none">休息日</span>
+      </div>
       <div class="free">可支配 <b id="ovFree">0h</b> · 已完成 <span id="ovDone">0/0</span></div>
     </div>
     <div class="meter"><i id="ovMeter" style="width:0%"></i></div>
@@ -57,7 +60,12 @@
     </div>
 
     <div class="card">
-      <h3>今日计划 <button class="link" id="addTask">＋ 安排任务</button></h3>
+      <h3>今日计划
+        <span class="hdr-actions">
+          <button class="link" id="importTasks">一键导入</button>
+          <button class="link" id="addTask">＋ 安排任务</button>
+        </span>
+      </h3>
       <div id="taskList"></div>
     </div>
 
@@ -104,6 +112,23 @@
 
   <!-- 作息视图 -->
   <section class="view" id="viewSchedule">
+    <div class="card">
+      <h3>每周休息日 <span class="hint">这几天按「休息日作息」走，时间更宽裕</span></h3>
+      <div class="rest-quick">
+        <button class="link" id="restPreset2">休2天 · 周六周日</button>
+        <button class="link" id="restPreset1">休1天 · 周日</button>
+      </div>
+      <div class="days-pick" id="restDays">
+        <label><input type="checkbox" value="1"><span>一</span></label>
+        <label><input type="checkbox" value="2"><span>二</span></label>
+        <label><input type="checkbox" value="3"><span>三</span></label>
+        <label><input type="checkbox" value="4"><span>四</span></label>
+        <label><input type="checkbox" value="5"><span>五</span></label>
+        <label><input type="checkbox" value="6"><span>六</span></label>
+        <label><input type="checkbox" value="7"><span>日</span></label>
+      </div>
+      <div class="rest-summary" id="restSummary"></div>
+    </div>
     <div class="card">
       <h3>固定占用 <span class="hint">上课 / 吃饭 / 睡觉等</span></h3>
       <p style="font-size:12.5px;color:var(--sub);margin-bottom:10px">填好每天固定的"没空时间"，应用会自动反推出你的空闲碎片时间（"今日"里点"从作息生成"）。</p>
@@ -190,6 +215,11 @@
       <div class="field"><label>结束</label><input type="time" id="oEnd" value="11:40"></div>
     </div>
     <div class="field"><label>每周哪几天</label>
+      <div class="days-quick">
+        <button type="button" data-fill="work">工作日</button>
+        <button type="button" data-fill="rest">休息日</button>
+        <button type="button" data-fill="all">每天</button>
+      </div>
       <div class="days-pick" id="oDays">
         <label><input type="checkbox" value="1" checked><span>一</span></label>
         <label><input type="checkbox" value="2" checked><span>二</span></label>
@@ -204,10 +234,34 @@
   </div>
 </div>
 
+<!-- 弹窗：选择导入方式（首次） -->
+<div class="modal-mask" id="mImportMode">
+  <div class="modal">
+    <h3>选择导入方式</h3>
+    <p class="hint" style="font-size:12.5px;color:var(--sub);margin-bottom:10px">决定「一键导入」把哪些事项拉进今日计划，之后可在设置里改。</p>
+    <div class="import-modes">
+      <button data-mode="due"><b>今天该做的</b><span>到期习惯 + 已到/今天截止的截止型</span></button>
+      <button data-mode="all"><b>全部事项</b><span>事项池里所有事项都列进来</span></button>
+      <button data-mode="pick"><b>弹窗勾选</b><span>自己勾选要导入哪些</span></button>
+    </div>
+  </div>
+</div>
+
+<!-- 弹窗：勾选要导入的事项 -->
+<div class="modal-mask" id="mImportPick">
+  <div class="modal">
+    <h3>勾选要导入的事项</h3>
+    <div id="importPickList"></div>
+    <div class="actions"><button id="mImportPickCancel">取消</button><button class="primary" id="mImportPickOk">导入所选</button></div>
+  </div>
+</div>
+
 <!-- 弹窗：设置 -->
 <div class="modal-mask" id="mSettings">
   <div class="modal">
     <h3>设置</h3>
+
+    <div class="set-section-title">通用</div>
     <div class="set-group">
       <div class="set-label">界面颜色</div>
       <div class="set-themes">
@@ -216,6 +270,17 @@
         <button data-set-theme="amber"><i class="t-swatch amber"></i>暖阳</button>
         <button data-set-theme="ink"><i class="t-swatch ink"></i>墨蓝</button>
       </div>
+    </div>
+
+    <div class="set-section-title">今日计划</div>
+    <div class="set-group">
+      <div class="set-label">一键导入方式</div>
+      <div class="seg" id="setImportMode">
+        <button data-v="due">今天该做</button>
+        <button data-v="all">全部</button>
+        <button data-v="pick">勾选</button>
+      </div>
+      <div class="set-hint" id="setImportModeHint">还没选过，首次点「一键导入」时会先让你选。</div>
     </div>
     <div class="set-group">
       <div class="set-label">勾掉任务时的鼓励</div>
@@ -236,6 +301,7 @@
         <label class="switch"><input type="checkbox" id="setCheerDone"><i></i></label>
       </div>
     </div>
+
     <div class="actions"><button class="primary" id="mSettingsClose">完成</button></div>
   </div>
 </div>
