@@ -6,6 +6,7 @@
  * ========================================================= */
 
 const STORE_KEY = "companion-plan-v2";
+const APP_VERSION = "v5"; // 反馈报告里会带上；改代码时和 sw.js 的 CACHE 版本号一起 +1
 const MS_DAY = 86400000;
 function todayStr(){
   const d = new Date(); // 本地时区的"现在"
@@ -1471,3 +1472,162 @@ if("Notification" in window && Notification.permission === "default"){
   window.addEventListener("load", ()=>{ Notification.requestPermission(); });
 }
 window.addEventListener("load", ()=>{ setTimeout(maybeRemind, 800); });
+
+/* ---------- 反馈：报告在本地拼，怎么发出去由你决定 ----------
+   这个应用没有任何网络请求，反馈也不破例：报告只在你点开弹窗后拼出来，
+   你复制 / 存文件 / 自己去提 issue。绝不自动发送，也绝不带你的文字内容。 */
+const ERR_KEY = "companion-plan-errors";
+const ERR_MAX = 5;
+function loadErrLog(){
+  try { const a = JSON.parse(localStorage.getItem(ERR_KEY) || "[]"); return Array.isArray(a) ? a.slice(0, ERR_MAX) : []; }
+  catch(e){ return []; }
+}
+let errLog = loadErrLog();
+function recordError(msg, where){
+  errLog.unshift({ t: Date.now(), w: String(where || view), m: String(msg).slice(0, 300) });
+  errLog = errLog.slice(0, ERR_MAX);
+  try { localStorage.setItem(ERR_KEY, JSON.stringify(errLog)); } catch(e){}
+  const bar = $("errBar");
+  if(bar) bar.classList.add("on"); // 崩了也得让用户找得到反馈入口
+}
+function clearErrLog(){
+  errLog = [];
+  try { localStorage.removeItem(ERR_KEY); } catch(e){}
+  const bar = $("errBar"); if(bar) bar.classList.remove("on");
+}
+window.addEventListener("error", e => {
+  if(!e) return;
+  const where = e.filename ? String(e.filename).split("/").pop() + ":" + (e.lineno || 0) : view;
+  recordError(e.message || "脚本错误", where);
+});
+window.addEventListener("unhandledrejection", e => {
+  const r = e && e.reason;
+  recordError("未处理的 Promise：" + ((r && r.message) || r || "未知"), view);
+});
+
+/* 只报数量，不报内容：事项名、笔记正文、勾了哪些考点，一个字都不带 */
+function countSummary(){
+  const d = dayData();
+  let checked = 0, total = 0;
+  try {
+    const items = sprintAllItems();
+    total = items.length;
+    checked = items.filter(it => sprintState.checked[it.id]).length;
+  } catch(e){}
+  return [
+    `事项池 ${state.backlog.length} 条`,
+    `今日任务 ${d.tasks.length} 条（已完成 ${d.tasks.filter(t=>t.done).length}）`,
+    `空闲碎片 ${d.fragments.length} 段`,
+    `笔记 ${state.notes.length} 条`,
+    total ? `冲刺勾选 ${checked}/${total}` : "冲刺数据未加载",
+  ].join(" / ");
+}
+function envSummary(){
+  const ua = (typeof navigator !== "undefined" && navigator.userAgent) || "";
+  const brand = /Edg\//.test(ua) ? "Edge" : /Chrome\//.test(ua) ? "Chrome" : /Firefox\//.test(ua) ? "Firefox"
+              : /Safari\//.test(ua) ? "Safari" : "未知浏览器";
+  const major = (ua.match(/(?:Edg|Chrome|Firefox|Version)\/(\d+)/) || [])[1] || "";
+  const os = /Windows NT 10/.test(ua) ? "Windows" : /Android/.test(ua) ? "Android"
+           : /iPhone|iPad/.test(ua) ? "iOS" : /Mac OS X/.test(ua) ? "macOS" : "未知系统";
+  const standalone = (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches) ? "是" : "否";
+  const scr = (typeof screen !== "undefined" && screen.width) ? screen.width + "×" + screen.height : "?";
+  const tz = (Intl && Intl.DateTimeFormat) ? Intl.DateTimeFormat().resolvedOptions().timeZone : "?";
+  const net = (navigator && navigator.onLine === false) ? "离线" : "在线";
+  return `${brand}${major ? " " + major : ""} / ${os} / 窗口 ${window.innerWidth}×${window.innerHeight} / 屏幕 ${scr} / 时区 ${tz} / 独立窗口 ${standalone} / ${net}`;
+}
+function settingSummary(){
+  const ms = { 1:"勾到 1 个", 3:"勾到 3 个", 5:"勾到 5 个" };
+  const im = { due:"今天该做", all:"全部", pick:"勾选" };
+  return [
+    `主题 ${THEME_NAMES[document.body.dataset.theme] || "紫藤"}`,
+    `休息日 ${settings.restDays.length ? settings.restDays.map(d=>"周"+DAY_NAMES[d-1]).join("") : "未设置"}`,
+    `导入方式 ${im[settings.importMode] || "未设置"}`,
+    `鼓励 每次 ${settings.cheerEvery ? "开" : "关"} / 完成数 ${ms[settings.cheerMilestone] || "关"} / 全部完成 ${settings.cheerDone ? "开" : "关"}`,
+  ].join(" / ");
+}
+function fmtErrTime(ts){
+  const d = new Date(ts);
+  return `${d.getMonth()+1}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+const ERR_VIEW_NAMES = { today:"今日计划", backlog:"事项池", week:"周视图", schedule:"作息", notes:"记事", sprint:"冲刺" };
+function errWhere(w){ const k = String(w); return ERR_VIEW_NAMES[k] || k; } // 视图 id 换成中文，文件名:行号原样留
+function buildReport(desc){
+  const now = new Date();
+  const lines = [
+    "【陪伴·计划 反馈】",
+    `时间：${todayStr()} ${pad(now.getHours())}:${pad(now.getMinutes())}`,
+    `版本：${APP_VERSION}`,
+    "",
+    "我在做什么 / 问题描述：",
+    String(desc || "").trim() || "（没写）",
+    "",
+    "--- 自动诊断（可以删掉这里面任何一行）---",
+    `环境：${envSummary()}`,
+    `数据量：${countSummary()}`,
+    `设置：${settingSummary()}`,
+  ];
+  if(errLog.length){
+    lines.push(`最近报错（保留了 ${errLog.length} 条，最多留 ${ERR_MAX} 条）：`);
+    errLog.forEach((e,i) => lines.push(` ${i+1}) ${fmtErrTime(e.t)} · ${errWhere(e.w)} · ${e.m}`));
+  } else {
+    lines.push("最近报错：无");
+  }
+  lines.push("--- 自动诊断结束 ---");
+  return lines.join("\n");
+}
+function reportFileName(){
+  const d = new Date();
+  return `陪伴-计划-反馈-${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}.txt`;
+}
+function issueUrl(desc, report){
+  const t = String(desc || "").trim().split("\n")[0].slice(0, 40) || "用户反馈";
+  return "https://github.com/jingxiuaian/companion-app/issues/new"
+       + "?title=" + encodeURIComponent("反馈：" + t)
+       + "&body=" + encodeURIComponent(report);
+}
+
+function openFeedback(){
+  $("fbText").value = "";
+  $("fbReport").value = buildReport("");
+  $("fbHint").textContent = errLog.length
+    ? `本地记着最近 ${errLog.length} 条报错，已经写在下面了。可以删掉任何一行。`
+    : "没检测到报错，也欢迎直接提建议或说哪里别扭。";
+  openModal("mFeedback");
+}
+$("feedbackBtn").addEventListener("click", ()=>{ closeModal("mSettings"); openFeedback(); });
+$("mFeedbackCancel").addEventListener("click", ()=> closeModal("mFeedback"));
+$("fbText").addEventListener("input", ()=>{ $("fbReport").value = buildReport($("fbText").value); });
+$("fbCopy").addEventListener("click", ()=>{
+  const txt = $("fbReport").value;
+  const done = ()=> toast("报告已复制，直接发给我就行");
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(txt).then(done).catch(()=>{
+      $("fbReport").select(); document.execCommand && document.execCommand("copy"); done();
+    });
+  } else {
+    $("fbReport").select(); document.execCommand && document.execCommand("copy"); done();
+  }
+});
+$("fbSave").addEventListener("click", ()=>{
+  try {
+    const blob = new Blob([$("fbReport").value], { type: "text/plain;charset=utf-8" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = reportFileName();
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(()=> URL.revokeObjectURL(a.href), 1000);
+    toast("已存到下载文件夹");
+  } catch(e){ toast("保存失败，先点「复制报告」吧"); }
+});
+$("fbIssue").addEventListener("click", ()=>{
+  const url = issueUrl($("fbText").value, $("fbReport").value);
+  const w = window.open(url, "_blank");
+  if(!w) toast("浏览器拦了新窗口，改用「复制报告」发我也行");
+});
+$("fbClear").addEventListener("click", ()=>{
+  clearErrLog();
+  $("fbReport").value = buildReport($("fbText").value);
+  toast("报错记录已清空");
+});
+$("errBarGo").addEventListener("click", ()=>{ $("errBar").classList.remove("on"); openFeedback(); });
+$("errBarClose").addEventListener("click", ()=> $("errBar").classList.remove("on"));

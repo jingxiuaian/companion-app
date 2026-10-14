@@ -28,6 +28,13 @@
     </div>
   </header>
 
+  <!-- 出错兜底：白屏了也得让用户找得到反馈入口 -->
+  <div class="err-bar" id="errBar">
+    <span class="err-txt">刚才出了点问题</span>
+    <button class="link" id="errBarGo">把问题发我</button>
+    <span class="err-x" id="errBarClose">✕</span>
+  </div>
+
   <div class="overview">
     <div class="row1">
       <div class="ov-title">
@@ -343,7 +350,32 @@
       </div>
     </div>
 
+    <div class="set-section-title">其他</div>
+    <div class="set-group">
+      <div class="set-label">反馈问题 / 提建议</div>
+      <div class="set-hint">发现 bug、或者用着别扭的地方，都写在这儿。报告在你本机生成，不会自己发出去。</div>
+      <div style="margin-top:8px"><button class="link" id="feedbackBtn">打开反馈窗口</button></div>
+    </div>
+
     <div class="actions"><button class="primary" id="mSettingsClose">完成</button></div>
+  </div>
+</div>
+
+<!-- 弹窗：反馈（报告在本机生成，不自动发送） -->
+<div class="modal-mask" id="mFeedback">
+  <div class="modal">
+    <h3>反馈问题 / 提建议</h3>
+    <p class="hint" id="fbHint" style="font-size:12.5px;color:var(--sub);margin-bottom:10px"></p>
+    <div class="field"><label>当时在做什么 / 问题描述</label>
+      <textarea id="fbText" rows="3" placeholder="例如：在冲刺页点「全部展开」，页面卡了两秒"></textarea></div>
+    <div class="field"><label>会自动带上的诊断信息（可以删掉任何一行）</label>
+      <textarea id="fbReport" rows="10" spellcheck="false"></textarea></div>
+    <div class="actions"><button id="mFeedbackCancel">关闭</button><button class="primary" id="fbCopy">复制报告</button></div>
+    <div class="fb-alt">
+      <button class="link" id="fbSave">存成文件</button>
+      <button class="link" id="fbIssue">去 GitHub 提 issue</button>
+      <button class="link" id="fbClear">清空报错记录</button>
+    </div>
   </div>
 </div>
 
