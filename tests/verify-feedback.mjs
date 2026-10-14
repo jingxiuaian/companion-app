@@ -54,6 +54,7 @@ function boot(storage0 = {}) {
   sandbox.window.addEventListener = (t, fn) => { (winH[t] = winH[t] || []).push(fn); };
   sandbox.window.matchMedia = () => ({ matches: false });
   sandbox.window.open = url => { openedUrl = url; return {}; };
+  sandbox.window.location = { href: "" };   // 用来接住 mailto: 跳转
 
   const ctx = vm.createContext(sandbox);
   vm.runInContext(code, ctx, { filename: "app.js" });
@@ -61,6 +62,7 @@ function boot(storage0 = {}) {
     ctx, els, storage, el,
     fireWin: (t, ev) => (winH[t] || []).forEach(fn => fn(ev || {})),
     getCopied: () => copied, getOpened: () => openedUrl, made,
+    getLoc: () => sandbox.window.location.href,
   };
 }
 
@@ -173,7 +175,42 @@ globalThis.__issue = issueUrl("卡住了 & 试试", "报告正文");
   ok("兜底条的 ✕ 能关掉", !h.el("errBar").classList.contains("on"), "");
 }
 
-/* ============ 4. 接线契约：app.js 里用到的 id 都存在于 index.html ============ */
+/* ============ 4. 邮箱出口 ============ */
+{
+  const h = boot();
+  run(h.ctx, `state.days = {}; state.date = todayStr(); save(); render();
+              globalThis.__mail = mailtoUrl(buildReport("页面卡住了"), "页面卡住了");`);
+  const url = run(h.ctx, "__mail");
+  const report = run(h.ctx, `buildReport("页面卡住了")`);
+
+  ok("邮箱出口拼成 mailto:", /^mailto:[^?]+@[^?]+\?/.test(url), url.slice(0, 45) + "…");
+  ok("mailto 的收件人就是配置里的地址", url.startsWith("mailto:" + run(h.ctx, "FEEDBACK_EMAIL") + "?"), "");
+  ok("mailto 里没有裸换行（有的话邮件正文会被截断）", !/[\r\n]/.test(url), "");
+  ok("mailto 正文编码后就是报告全文", decodeURIComponent((url.split("body=")[1] || "")) === report, "");
+  ok("mailto 主题带版本号和描述首行",
+     decodeURIComponent((url.match(/subject=([^&]*)/) || [])[1] || "").includes("【陪伴·计划 反馈】v5") &&
+     decodeURIComponent((url.match(/subject=([^&]*)/) || [])[1] || "").includes("页面卡住了"), "");
+
+  // 点按钮 → 交给系统邮件客户端（页面本身不发网络请求）
+  h.el("fbText").value = "页面卡住了"; h.el("fbText").fire("input");   // 描述一改，报告跟着更新
+  const expect = run(h.ctx, `mailtoUrl($("fbReport").value, $("fbText").value)`);
+  h.el("fbMail").fire("click");
+  ok("点「发邮件给我」会跳 mailto:", h.getLoc() === expect, String(h.getLoc()).slice(0, 40) + "…");
+
+  // 超长报告会给告警，但仍然交出去
+  run(h.ctx, `globalThis.__long = mailtoUrl(buildReport("长".repeat(3000)), "长".repeat(3000))`);
+  const longUrl = run(h.ctx, "__long");
+  ok("超长报告会超过阈值（触发告警路径）", longUrl.length > run(h.ctx, "MAILTO_MAX"), "长度 " + longUrl.length);
+  h.el("fbText").value = "长".repeat(3000); h.el("fbText").fire("input");
+  h.el("fbMail").fire("click");
+  ok("超长时提示改用「复制报告」", /邮件可能被截断/.test(h.el("toast").textContent), h.el("toast").textContent);
+
+  // 公开仓库里不该出现明文地址
+  const js = fs.readFileSync(new URL("../app.js", import.meta.url), "utf8");
+  ok("app.js 里没有明文的完整邮箱（拆开拼的，挡一挡爬虫）", !/245757759@qq\.com/.test(js), "");
+}
+
+/* ============ 5. 接线契约：app.js 里用到的 id 都存在于 index.html ============ */
 {
   const html = fs.readFileSync(new URL("../index.html", import.meta.url), "utf8");
   const js = fs.readFileSync(new URL("../app.js", import.meta.url), "utf8");

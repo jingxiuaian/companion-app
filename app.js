@@ -1586,17 +1586,36 @@ function issueUrl(desc, report){
        + "&body=" + encodeURIComponent(report);
 }
 
+/* 收件邮箱。拆成两段拼是为了别被公开仓库里的爬虫直接抓走地址。
+   说清楚：这只抬高门槛，挡不住真去读代码的人；要完全藏住得走表单服务（那样地址在服务端）。 */
+const FEEDBACK_EMAIL = ["245757759", "qq.com"].join("@");
+const MAILTO_MAX = 1800; // 再长有些邮件客户端会截断正文
+function mailtoUrl(report, desc){
+  const t = String(desc || "").trim().split("\n")[0].slice(0, 40);
+  const subject = "【陪伴·计划 反馈】" + APP_VERSION + (t ? " · " + t : "");
+  return "mailto:" + FEEDBACK_EMAIL
+       + "?subject=" + encodeURIComponent(subject)
+       + "&body=" + encodeURIComponent(report);
+}
+
 function openFeedback(){
   $("fbText").value = "";
   $("fbReport").value = buildReport("");
-  $("fbHint").textContent = errLog.length
+  $("fbHint").textContent = (errLog.length
     ? `本地记着最近 ${errLog.length} 条报错，已经写在下面了。可以删掉任何一行。`
-    : "没检测到报错，也欢迎直接提建议或说哪里别扭。";
+    : "没检测到报错，也欢迎直接提建议或说哪里别扭。")
+    + "点「发邮件给我」没反应的话，就是浏览器没配邮件客户端，改用「复制报告」一样能发我。";
   openModal("mFeedback");
 }
 $("feedbackBtn").addEventListener("click", ()=>{ closeModal("mSettings"); openFeedback(); });
 $("mFeedbackCancel").addEventListener("click", ()=> closeModal("mFeedback"));
 $("fbText").addEventListener("input", ()=>{ $("fbReport").value = buildReport($("fbText").value); });
+$("fbMail").addEventListener("click", ()=>{
+  const url = mailtoUrl($("fbReport").value, $("fbText").value);
+  if(url.length > MAILTO_MAX) toast("报告偏长，邮件可能被截断——建议改用「复制报告」");
+  try { window.location.href = url; } // mailto: 交给系统邮件客户端，页面本身不发任何网络请求
+  catch(e){ toast("没能唤起邮件客户端，改用「复制报告」吧"); }
+});
 $("fbCopy").addEventListener("click", ()=>{
   const txt = $("fbReport").value;
   const done = ()=> toast("报告已复制，直接发给我就行");
