@@ -215,12 +215,14 @@ function render(){
   $("tabSchedule").classList.toggle("on", view==="schedule");
   $("tabWeek").classList.toggle("on", view==="week");
   $("tabNotes").classList.toggle("on", view==="notes");
+  $("tabSprint").classList.toggle("on", view==="sprint");
   $("viewToday").classList.toggle("on", view==="today");
   $("viewBacklog").classList.toggle("on", view==="backlog");
   $("viewSchedule").classList.toggle("on", view==="schedule");
   $("viewWeek").classList.toggle("on", view==="week");
   $("viewNotes").classList.toggle("on", view==="notes");
-  renderOverview(); renderFrags(); renderTasks(); renderBacklog(); renderSchedule(); renderSuggList(); renderWeek(); renderNotes();
+  $("viewSprint").classList.toggle("on", view==="sprint");
+  renderOverview(); renderFrags(); renderTasks(); renderBacklog(); renderSchedule(); renderSuggList(); renderWeek(); renderNotes(); renderSprint();
 }
 
 function renderOverview(){
@@ -761,6 +763,7 @@ $("tabBacklog").addEventListener("click", ()=>{ view="backlog"; render(); });
 $("tabSchedule").addEventListener("click", ()=>{ view="schedule"; render(); });
 $("tabWeek").addEventListener("click", ()=>{ view="week"; render(); });
 $("tabNotes").addEventListener("click", ()=>{ view="notes"; render(); });
+$("tabSprint").addEventListener("click", ()=>{ view="sprint"; render(); });
 
 /* 从作息生成今日空闲 */
 $("genFrag").addEventListener("click", ()=>{
@@ -1159,6 +1162,278 @@ function cleanupDrag(){
   dragIdx = null;
   document.querySelectorAll(".blk.dragging, .blk.dragover").forEach(x=>x.classList.remove("dragging","dragover"));
 }
+
+/* =========================================================
+ * 冲刺计划模块 —— 考前 11 天备考配额（2026年10月考期）
+ * 数据：plan-data.js（window.PLAN，只读计划）
+ * 状态：localStorage companion-sprint-v1（勾选 / 让位 / 考试安排覆盖）
+ * 规则：当天没勾完的考点自动顺延到之后每一天；低星可一键让位。
+ * ========================================================= */
+const SPRINT_KEY = "companion-sprint-v1";
+let sprintState = loadSprint();
+let sprintAllOpen = false;   // 「全部展开」：完整要点默认折 3 行，一键展开全部
+function loadSprint(){
+  try {
+    const s = localStorage.getItem(SPRINT_KEY);
+    if(s) return Object.assign({checked:{}, doneOn:{}, yielded:[], examOverride:null}, JSON.parse(s));
+  } catch(e){}
+  return {checked:{}, doneOn:{}, yielded:[], examOverride:null};
+}
+function saveSprint(){ localStorage.setItem(SPRINT_KEY, JSON.stringify(sprintState)); }
+
+function planMeta(){ return (window.PLAN && window.PLAN.meta) || null; }
+function planDays(){ return (window.PLAN && window.PLAN.days) || []; }
+function dayIndexOf(dateStr){
+  const ds = planDays();
+  if(!ds.length) return -999;
+  if(dateStr < ds[0].date) return -1;
+  for(let i=0;i<ds.length;i++) if(ds[i].date === dateStr) return i;
+  return ds.length; // 计划之后
+}
+function sprintExam(){
+  const meta = planMeta();
+  if(!meta) return [];
+  return sprintState.examOverride || meta.exam;
+}
+function sprintAllItems(){
+  const out = [];
+  for(const d of planDays()) for(const it of d.items) out.push(it);
+  return out;
+}
+function sprintCounts(){
+  const all = sprintAllItems();
+  const checked = all.filter(it => sprintState.checked[it.id]).length;
+  return {total: all.length, checked};
+}
+/* 顺延：计划日前"没勾完且没让位"的条目滚到今天。
+   今天刚勾掉的也留在清单里（看得见 ✓ 和划线，点错了还能取消），第二天才收起——
+   否则勾一下整条就消失，像是被删了。 */
+function carriedItems(dateStr){
+  const idx = dayIndexOf(dateStr);
+  if(idx <= 0) return [];
+  const out = [];
+  for(let i=0;i<idx;i++){
+    for(const it of planDays()[i].items){
+      if(sprintState.yielded.includes(it.id)) continue;
+      const doneToday = sprintState.doneOn && sprintState.doneOn[it.id] === dateStr;
+      if(sprintState.checked[it.id] && !doneToday) continue;
+      out.push(it);
+    }
+  }
+  return out;
+}
+const SPRINT_SUBJ_ORDER = ["my","gsf","jds","en","all"];
+function sprintKindTag(it){
+  if(it.kind === "batch") return "成套";
+  if(it.kind === "words") return "词表";
+  if(it.id.indexOf("-l-") >= 0) return "论述";
+  if(it.id.indexOf("-c-") >= 0) return "案例";
+  return "";
+}
+function sprintRow(it, isCarry){
+  const checked = !!sprintState.checked[it.id];
+  const star = it.stars ? '<span class="sp-stars">' + "★".repeat(it.stars) + "</span>" : "";
+  const freq = it.freq ? '<span class="sp-freq">高频</span>' : "";
+  const carry = isCarry ? '<span class="sp-carry">顺延</span>' : "";
+  const kt = sprintKindTag(it);
+  const kind = kt ? '<span class="sp-batch">' + kt + "</span>" : "";
+  const point = it.point ? `<div class="sp-point">${esc(it.point)}</div>` : "";
+  /* 要点很长时给一个明显的"展开全文"入口：数据是完整的，别让人以为被截断了 */
+  const more = (it.point && it.point.length > 68)
+    ? `<span class="sp-more" data-sprint-expand="${it.id}"></span>` : "";
+  /* 词表：默认展开（打开就能背），并给一个写着词数的明确按钮可收可放 */
+  const isWords = it.kind === "words" && it.words && it.words.length;
+  const words = isWords
+    ? `<span class="sp-more sp-words-toggle" data-sprint-expand="${it.id}">共 ${it.words.length} 词</span>
+       <div class="sp-words">${it.words.map(w=>`<span>${esc(w)}</span>`).join("")}</div>` : "";
+  return `<div class="sp-item ${checked?'done':''}${(sprintAllOpen || isWords)?' open':''}">
+    <div class="sp-cb" data-sprint-check="${it.id}" title="${checked?'取消':'勾掉'}">${checked?'✓':''}</div>
+    <div class="sp-body">
+      <div class="sp-line"><span class="sp-name" data-sprint-expand="${it.id}">${freq}${carry}${kind}${star}${esc(it.title)}</span></div>
+      ${point}
+      ${more}
+      ${words}
+    </div>
+  </div>`;
+}
+function renderSprint(){
+  const meta = planMeta();
+  const el = $("sprintList"), debtEl = $("spDebt"), yEl = $("spYielded");
+  if(!meta || !planDays().length){
+    $("spTitle").textContent = "冲刺计划";
+    $("spMeta").textContent = "";
+    $("spMeter").style.width = "0%";
+    $("spDayTitle").innerHTML = "今日配额";
+    $("spExamCard").style.display = "none";
+    el.innerHTML = '<div class="empty">没有找到计划数据（plan-data.js）。<br>请确认 plan-data.js 和 index.html 在同一个文件夹里，再刷新一次。</div>';
+    debtEl.innerHTML = ""; yEl.innerHTML = "";
+    return;
+  }
+  const dateStr = state.date;
+  const today = todayStr();
+  const idx = dayIndexOf(dateStr);
+  const exam = sprintExam();
+  const firstExam = exam.length ? exam[0].date : null;
+  const dd = firstExam ? daysUntil(firstExam) : null;
+
+  /* 顶部：阶段 / 进度 / 倒计时 */
+  let stageLabel = "考前冲刺";
+  if(idx >= 0 && idx < planDays().length){
+    const st = meta.stages.find(s => idx + 1 >= s.from && idx + 1 <= s.to);
+    if(st) stageLabel = "第 " + (idx + 1) + " 天 · " + st.label;
+  }
+  const cnt = sprintCounts();
+  $("spTitle").textContent = meta.title || "冲刺计划";
+  let metaTxt = stageLabel;
+  if(dd !== null){
+    metaTxt += dd > 0 ? " · 距首场考试 " + dd + " 天" : (dd === 0 ? " · 今天考试，稳住" : " · 考试已结束");
+  }
+  $("spMeta").textContent = metaTxt;
+  $("spMeter").style.width = (cnt.total ? Math.round(cnt.checked / cnt.total * 100) : 0) + "%";
+
+  /* 考试安排卡片（可编辑） */
+  const examCard = $("spExamCard");
+  const onExamDay = exam.some(x => x.date === dateStr);
+  const afterExam = firstExam && dateStr > exam[exam.length - 1].date;
+  examCard.style.display = (onExamDay || afterExam || (dd !== null && dd <= 2 && dd >= 0)) ? "" : "none";
+  $("spExamList").innerHTML = exam.map((ed)=>{
+    const dayLabel = ed.date === today ? "今天" : ed.date;
+    return `<div class="sp-exam-day">
+      <div class="sp-exam-date">${dayLabel}${ed.date === dateStr ? ' <span class="hint">· 就是今天</span>' : ""}</div>
+      ${ed.slots.map((sl, si)=>`
+        <div class="sp-exam-slot">
+          <span class="sp-subj-tag">${esc(meta.subjects[sl.subject] || sl.name)}</span>
+          <input class="sp-exam-input" data-exam-date="${ed.date}" data-exam-slot="${si}" value="${esc(sl.name)}" title="科目名称">
+          <input class="sp-exam-input sp-exam-time" data-exam-time="${ed.date}" data-exam-slot="${si}" value="${esc(sl.time)}" title="考试时间">
+        </div>`).join("")}
+    </div>`;
+  }).join("") + '<button class="btn-ghost" data-sprint-saveexam>保存考试安排</button>';
+
+  /* 今日配额主体 */
+  const isPlanDay = idx >= 0 && idx < planDays().length;
+  let shown = [];
+  if(isPlanDay){
+    for(const it of planDays()[idx].items){
+      if(!sprintState.yielded.includes(it.id)) shown.push(it);
+    }
+  }
+  const carried = (dateStr === today && isPlanDay) ? carriedItems(dateStr) : [];
+  const carriedIds = new Set(carried.map(x => x.id));
+  const merged = carried.concat(shown);
+  const doneToday = merged.filter(it => sprintState.checked[it.id]).length;
+  $("spDayTitle").innerHTML = (dateStr === today ? "今日配额" : dateStr + " · 配额") + ' <span class="hint">' +
+    (idx < 0 ? "计划还没开始" : afterExam ? "考试结束，辛苦啦" : "已完成 " + doneToday + "/" + merged.length) + "</span>";
+
+  debtEl.innerHTML = (dateStr === today && carried.filter(it => !sprintState.checked[it.id]).length)
+    ? `<div class="sp-debt">📌 前几天顺延进来 ${carried.filter(it => !sprintState.checked[it.id]).length} 条，排在前面先做</div>` : "";
+
+  if(onExamDay){
+    /* 考试日：先看该日科目的高频清单 */
+    const subjs = (exam.find(x => x.date === dateStr) || {}).slots || [];
+    const subjSet = new Set(subjs.map(s => s.subject));
+    const skim = [];
+    for(const d of planDays()) for(const it of d.items){
+      const doneToday = sprintState.doneOn && sprintState.doneOn[it.id] === dateStr;
+      if(it.freq && subjSet.has(it.subject) && (!sprintState.checked[it.id] || doneToday)) skim.push(it);
+    }
+    const skimIds = new Set(skim.map(x=>x.id));
+    const rest = merged.filter(it => !skimIds.has(it.id));
+    el.innerHTML = '<div class="sp-sec-hd">今天的考试科目 · 考前扫一遍高频</div>' + skim.map(it => sprintRow(it, false)).join("") +
+      (rest.length ? '<div class="sp-sec-hd">其他欠账（有余力再做）</div>' + rest.map(it => sprintRow(it, true)).join("") : "");
+  } else if(afterExam){
+    el.innerHTML = `<div class="empty">全部考试结束，共完成 ${cnt.checked}/${cnt.total} 个学习单元。<br>剩下的交给时间，好好休息。</div>`;
+  } else if(!isPlanDay){
+    el.innerHTML = '<div class="empty">计划外日期（计划：' + (planDays()[0] ? planDays()[0].date : "") + " 至 " + (planDays()[planDays().length-1] ? planDays()[planDays().length-1].date : "") + "）。</div>";
+  } else {
+    /* 按科目分组渲染 */
+    const groups = [];
+    for(const subj of SPRINT_SUBJ_ORDER){
+      const items = merged.filter(it => it.subject === subj);
+      if(items.length) groups.push({subj, items});
+    }
+    el.innerHTML = groups.map(g=>`
+      <div class="sp-subj-hd">${esc(meta.subjects[g.subj] || g.subj)} <span class="hint">${g.items.filter(x=>sprintState.checked[x.id]).length}/${g.items.length}</span></div>
+      ${g.items.map(it => sprintRow(it, carriedIds.has(it.id))).join("")}`).join("");
+  }
+
+  /* 已让位区 */
+  const yieldedItems = sprintAllItems().filter(it => sprintState.yielded.includes(it.id));
+  yEl.innerHTML = yieldedItems.length
+    ? `<details class="sp-yielded"><summary>已让位 ${yieldedItems.length} 条（低星，可恢复）</summary>
+       ${yieldedItems.map(it=>`<div class="sp-item sp-yield-row"><span class="sp-name">${esc(it.title)}</span>
+       <button class="link" data-sprint-restore="${it.id}">恢复</button></div>`).join("")}</details>`
+    : "";
+}
+
+/* 低星让位：把今天可见的 1-2 星考点移出，保留高频/成套任务 */
+function yieldLowStars(){
+  const dateStr = state.date;
+  const idx = dayIndexOf(dateStr);
+  if(idx < 0 || idx >= planDays().length){ toast("今天没有可让位的计划"); return; }
+  const carried = dateStr === todayStr() ? carriedItems(dateStr) : [];
+  const pool = carried.concat(planDays()[idx].items.filter(it => !sprintState.yielded.includes(it.id)));
+  const low = pool.filter(it => it.kind === "kaodian" && it.stars >= 1 && it.stars <= 2 && !it.freq && !sprintState.checked[it.id]);
+  if(!low.length){ toast("没有可让位的低星考点（剩下的都是高频或成套任务）"); return; }
+  low.forEach(it => { if(!sprintState.yielded.includes(it.id)) sprintState.yielded.push(it.id); });
+  saveSprint();
+  renderSprint();
+  toast("已让位 " + low.length + " 条低星考点，可随时在底部恢复");
+}
+$("spYieldBtn").addEventListener("click", yieldLowStars);
+
+/* 全部展开/收起：复习时想一次看完所有要点 */
+const spExpandBtn = $("spExpandAllBtn");
+if(spExpandBtn) spExpandBtn.addEventListener("click", ()=>{
+  sprintAllOpen = !sprintAllOpen;
+  spExpandBtn.textContent = sprintAllOpen ? "全部收起" : "全部展开";
+  renderSprint();
+  toast(sprintAllOpen ? "已展开全部要点" : "已收起要点");
+});
+
+/* 点击委托：冲刺页 */
+document.addEventListener("click", e=>{
+  const spc = e.target.closest("[data-sprint-check]");
+  if(spc){
+    const id = spc.dataset.sprintCheck;
+    sprintState.checked[id] = !sprintState.checked[id];
+    if(!sprintState.doneOn) sprintState.doneOn = {};
+    if(sprintState.checked[id]) sprintState.doneOn[id] = todayStr();
+    else delete sprintState.doneOn[id];
+    saveSprint(); renderSprint();
+    if(sprintState.checked[id]) cheerOnCheck();
+    return;
+  }
+  const spr = e.target.closest("[data-sprint-restore]");
+  if(spr){
+    const id = spr.dataset.sprintRestore;
+    sprintState.yielded = sprintState.yielded.filter(x => x !== id);
+    saveSprint(); renderSprint();
+    toast("已恢复该考点");
+    return;
+  }
+  const spn = e.target.closest("[data-sprint-expand]");
+  if(spn){
+    const row = spn.closest(".sp-item");
+    if(row) row.classList.toggle("open");
+    return;
+  }
+  const sse = e.target.closest("[data-sprint-saveexam]");
+  if(sse){
+    const exam = sprintExam().map(ed => ({date: ed.date, slots: ed.slots.slice()}));
+    document.querySelectorAll("[data-exam-date]").forEach(inp => {
+      const day = exam.find(x => x.date === inp.dataset.examDate);
+      if(day && day.slots[+inp.dataset.examSlot]) day.slots[+inp.dataset.examSlot].name = inp.value.trim() || day.slots[+inp.dataset.examSlot].name;
+    });
+    document.querySelectorAll("[data-exam-time]").forEach(inp => {
+      const day = exam.find(x => x.date === inp.dataset.examTime);
+      if(day && day.slots[+inp.dataset.examSlot]) day.slots[+inp.dataset.examSlot].time = inp.value.trim() || day.slots[+inp.dataset.examSlot].time;
+    });
+    sprintState.examOverride = exam;
+    saveSprint(); renderSprint();
+    toast("考试安排已保存");
+    return;
+  }
+});
 
 render();
 

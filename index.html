@@ -45,6 +45,7 @@
     <button id="tabWeek">周视图</button>
     <button id="tabSchedule">作息</button>
     <button id="tabNotes">记事</button>
+    <button id="tabSprint">冲刺</button>
   </div>
 
   <!-- 今日视图 -->
@@ -153,6 +154,32 @@
         <button id="btnAddNote">记下</button>
       </div>
       <div id="noteList"></div>
+    </div>
+  </section>
+
+  <!-- 冲刺视图：考前 11 天备考计划 -->
+  <section class="view" id="viewSprint">
+    <div class="sprint-head">
+      <div class="sp-title" id="spTitle">冲刺计划</div>
+      <div class="sp-meta" id="spMeta"></div>
+      <div class="sp-meter"><i id="spMeter" style="width:0%"></i></div>
+    </div>
+
+    <div class="card" id="spExamCard" style="display:none">
+      <h3>考试安排 <span class="hint">以准考证为准，可直接修改</span></h3>
+      <div id="spExamList"></div>
+    </div>
+
+    <div class="card">
+      <h3 id="spDayTitle">今日配额
+        <span class="hdr-actions">
+          <button class="link" id="spExpandAllBtn">全部展开</button>
+          <button class="link" id="spYieldBtn">低星让位</button>
+        </span>
+      </h3>
+      <div id="spDebt"></div>
+      <div id="sprintList"></div>
+      <div id="spYielded"></div>
     </div>
   </section>
 
@@ -322,6 +349,7 @@
 
 <div id="toast" class="toast"></div>
 
+<script src="plan-data.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

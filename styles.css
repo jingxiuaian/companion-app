@@ -368,3 +368,50 @@ header.top {
 /* 已完成任务的实际耗时：可点开修改 */
 .task .t-spent { cursor: pointer; border-bottom: 1px dashed var(--line); }
 .task.done .t-spent { color: var(--brand); border-bottom-color: var(--brand-soft); }
+
+/* ---------- 冲刺计划 ---------- */
+.sprint-head { background: var(--card); border-radius: var(--radius); box-shadow: var(--shadow); padding: 14px 16px; margin-bottom: 14px; }
+.sprint-head .sp-title { font-size: 16px; font-weight: 700; }
+.sprint-head .sp-meta { font-size: 12.5px; color: var(--sub); margin-top: 4px; }
+.sprint-head .sp-meter { height: 8px; border-radius: 999px; background: var(--line); overflow: hidden; margin-top: 10px; }
+.sprint-head .sp-meter > i { display: block; height: 100%; background: linear-gradient(90deg, var(--brand), var(--brand-strong)); border-radius: 999px; transition: width .3s ease; }
+
+.sp-subj-hd { font-size: 12.5px; font-weight: 700; color: var(--brand); margin: 14px 0 0; padding: 4px 0 6px; border-bottom: 1px dashed var(--line); }
+.sp-subj-hd .hint { font-weight: 500; font-size: 11.5px; color: var(--sub); }
+
+.sp-item { display: flex; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--line); align-items: flex-start; }
+.sp-cb { width: 22px; height: 22px; border-radius: 7px; border: 1.5px solid var(--line); flex-shrink: 0; display: grid; place-items: center; cursor: pointer; color: #fff; font-size: 13px; font-weight: 700; margin-top: 2px; transition: .15s; }
+.sp-item.done .sp-cb { background: var(--brand); border-color: var(--brand); }
+.sp-body { flex: 1; min-width: 0; }
+.sp-line { font-size: 14px; line-height: 1.45; }
+.sp-name { cursor: pointer; }
+.sp-item.done .sp-name { color: var(--sub); text-decoration: line-through; }
+.sp-stars { color: var(--warn); font-size: 12px; margin-right: 6px; letter-spacing: 1px; }
+.sp-freq { display: inline-block; font-size: 10px; font-weight: 700; color: #fff; background: var(--brand); padding: 1px 6px; border-radius: 5px; margin-right: 6px; vertical-align: 1px; }
+.sp-carry { display: inline-block; font-size: 10px; font-weight: 700; color: var(--warn); background: transparent; border: 1px solid var(--warn); padding: 0 5px; border-radius: 5px; margin-right: 6px; vertical-align: 1px; }
+.sp-batch { display: inline-block; font-size: 10px; color: var(--sub); background: var(--seg-bg); padding: 1px 6px; border-radius: 5px; margin-right: 6px; vertical-align: 1px; }
+.sp-point { font-size: 12px; color: var(--sub); margin-top: 3px; line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.sp-item.open .sp-point { display: block; }
+.sp-more { display: inline-block; font-size: 11.5px; font-weight: 600; color: var(--brand); cursor: pointer; margin-top: 3px; user-select: none; }
+.sp-more::after { content: "展开全文 ↓"; }
+.sp-item.open .sp-more::after { content: "收起 ↑"; }
+.sp-words { display: none; margin-top: 8px; flex-direction: column; max-height: 260px; overflow-y: auto; background: var(--card-2); border: 1px solid var(--line); border-radius: 10px; padding: 6px 10px; }
+.sp-item.open .sp-words { display: flex; }
+.sp-words span { font-size: 12.5px; line-height: 1.5; color: var(--ink); padding: 4px 2px; border-bottom: 1px dashed var(--line); }
+.sp-words span:last-child { border-bottom: none; }
+.sp-words-toggle::after { content: "展开词表 ↓"; }
+.sp-item.open .sp-words-toggle::after { content: "收起词表 ↑"; }
+.sp-debt { font-size: 12.5px; color: var(--warn); background: var(--brand-soft); border: 1px dashed var(--warn); border-radius: 10px; padding: 8px 12px; margin-bottom: 8px; }
+.sp-sec-hd { font-size: 12.5px; font-weight: 700; color: var(--brand); margin-top: 12px; }
+.sp-yielded { margin-top: 12px; font-size: 12.5px; color: var(--sub); }
+.sp-yielded summary { cursor: pointer; color: var(--sub); font-weight: 600; }
+.sp-yielded summary:hover { color: var(--brand); }
+.sp-yield-row { border: none; padding: 6px 0; align-items: center; }
+.sp-yield-row .sp-name { flex: 1; color: var(--sub); font-size: 13px; }
+.sp-exam-day { margin-bottom: 12px; }
+.sp-exam-date { font-size: 13px; font-weight: 700; color: var(--ink); margin-bottom: 6px; }
+.sp-exam-slot { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.sp-subj-tag { font-size: 11px; font-weight: 700; color: var(--brand); background: var(--brand-soft); padding: 3px 8px; border-radius: 6px; white-space: nowrap; }
+.sp-exam-input { flex: 1; min-width: 0; font: inherit; font-size: 12.5px; padding: 6px 9px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); color: var(--ink); }
+.sp-exam-input:focus { outline: none; border-color: var(--brand); }
+.sp-exam-time { flex: 0 1 150px; }

@@ -1,5 +1,5 @@
-const CACHE = "companion-plan-v2"; // 更新代码时把版本号 +1，旧缓存会自动清掉
-const ASSETS = ["./", "./index.html", "./styles.css", "./app.js", "./icon.svg", "./manifest.webmanifest"];
+const CACHE = "companion-plan-v4"; // 更新代码时把版本号 +1，旧缓存会自动清掉（v4：考点要点改为完整正文，不再截断）
+const ASSETS = ["./", "./index.html", "./styles.css", "./app.js", "./plan-data.js", "./icon.svg", "./manifest.webmanifest"];
 
 self.addEventListener("install", e => {
   e.waitUntil(
